@@ -37,18 +37,29 @@
 	];
 </script>
 
-<div class="flex justify-center items-center h-full space-x-4">
-	{#each items as item}
-		<button
-			class="btn cursor-pointer {current_option == item.action
-				? 'outline preset-tonal-success'
-				: 'preset-tonal-surface'}"
-			title={item.descrption}
-			onfocus={() => {}}
-			onmouseover={() => (current_option = item.action)}
-			onmouseleave={() => (current_option = undefined)}
-		>
-			<item.icon class="cursor-pointer" />
-		</button>
-	{/each}
+<div class="flex items-center justify-center h-full">
+	<div class="relative">
+		{#each items as item, i}
+			{@const angle = angleStep * )}
+			<button
+				class="absolute btn cursor-pointer {current_option === item.action
+					? 'outline preset-tonal-success'
+					: 'preset-tonal-surface'}"
+				title={item.descrption}
+				onfocus={() => {}}
+				onmouseover={() => (current_option = item.action)}
+				onmouseleave={() => (current_option = undefined)}
+				style={`
+					top: 50%;
+					left: 50%;
+					transform: translate(-50%, -50%)
+							   rotate(${angle}deg)
+							   translateX(${radius}px)
+							   rotate(${-angle}deg);
+				`}
+			>
+				<item.icon class="cursor-pointer" />
+			</button>
+		{/each}
+	</div>
 </div>
