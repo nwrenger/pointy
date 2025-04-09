@@ -19,6 +19,7 @@
 				"decorations": false,
 				"transparent": true,
 				"resizable": false,
+				"shadow": false,
 				"backgroundThrottling": "disabled",
 				"width": 300,
 				"height": 300
