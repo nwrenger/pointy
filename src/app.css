@@ -1,0 +1,25 @@
+@import 'tailwindcss';
+@plugin '@tailwindcss/typography';
+
+@import '@skeletonlabs/skeleton';
+@import '@skeletonlabs/skeleton/optional/presets';
+@import '@skeletonlabs/skeleton/themes/cerberus';
+
+@source '../node_modules/@skeletonlabs/skeleton-svelte/dist';
+
+@custom-variant dark (&:is(*));
+
+[data-theme='cerberus'] {
+	--body-background-color-dark: transparent;
+}
+
+@layer base {
+	html,
+	body {
+		@apply h-full overflow-hidden;
+	}
+
+	* {
+		@apply select-none;
+	}
+}
