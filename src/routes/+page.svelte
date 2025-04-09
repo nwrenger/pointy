@@ -35,12 +35,15 @@
 			icon: KeyRound
 		}
 	];
+
+	const radius = items.length * 15;
+	const angleStep = 360 / items.length;
 </script>
 
 <div class="flex items-center justify-center h-full">
 	<div class="relative">
 		{#each items as item, i}
-			{@const angle = angleStep * )}
+			{@const angle = angleStep * i - 90}
 			<button
 				class="absolute btn cursor-pointer {current_option === item.action
 					? 'outline preset-tonal-success'
