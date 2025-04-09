@@ -7,6 +7,6 @@
 - [ ] Add the hidden from tabs and opened apps to linux and windows (currently just supported on macos)
 - [ ] Create icon
 
-## Future Idea
+## Future Ideas
 
 - [ ] Extension system
