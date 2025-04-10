@@ -3,20 +3,22 @@
 	import { invoke } from '@tauri-apps/api/core';
 	import { items } from './../lib';
 
+	const padding = 5;
+	const iconSize = 33;
+
 	const radius = items.length * 12;
 	const angleStep = 360 / items.length;
 
-	let current_option: string | undefined = $state();
+	const size = 2 * (radius + iconSize / 2) + 2 * padding;
 
-	getCurrentWindow().listen('select-option', () => {
+	let current_option: string | undefined = $state();
+	let current_window = getCurrentWindow();
+
+	current_window.setSize(new LogicalSize(size, size));
+	current_window.listen('select-option', () => {
 		if (current_option) {
 			invoke(current_option);
 		}
-	});
-
-	$effect(() => {
-		let s = radius * 2 + 2 * 33;
-		getCurrentWindow().setSize(new LogicalSize(s, s));
 	});
 </script>
 
