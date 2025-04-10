@@ -20,6 +20,7 @@
 				"transparent": true,
 				"resizable": false,
 				"shadow": false,
+				"alwaysOnTop": true,
 				"backgroundThrottling": "disabled",
 				"width": 200,
 				"height": 200
