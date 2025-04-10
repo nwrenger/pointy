@@ -91,7 +91,9 @@ pub fn run() {
             let handle = app.handle();
 
             let main_window = handle.get_webview_window("main").unwrap();
-            let scale_factor = main_window.current_monitor()?.unwrap().scale_factor();
+            let scale_factor = main_window
+                .current_monitor()?
+                .map_or(1., |f| f.scale_factor());
 
             let new_window_shortcut = Shortcut::from_str("CommandOrControl+Shift+Space").unwrap();
             handle.plugin(
