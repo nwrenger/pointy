@@ -20,7 +20,7 @@
 		}
 	});
 
-	const timeout_duration = 75;
+	const timeout_duration = 150;
 	let active_timeout: NodeJS.Timeout | undefined = $state();
 	let current_option: string | undefined = $state();
 
