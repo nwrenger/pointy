@@ -6,6 +6,7 @@
 - [ ] Add settings with: editing shortcut and autostart option
 - [ ] Add the hidden from tabs and opened apps to linux and windows (currently just supported on macos)
 - [ ] Create icon
+- [ ] Maybe (if possible): Focus back last focused window on the hiding of pointy's selector
 - [x] Add icon mind. hold duration -> no unwanted selections (through a hover outline filling thingy)
 
 ## Future Ideas
