@@ -21,8 +21,8 @@
 				"resizable": false,
 				"shadow": false,
 				"backgroundThrottling": "disabled",
-				"width": 300,
-				"height": 300
+				"width": 200,
+				"height": 200
 			}
 		],
 		"macOSPrivateApi": true,

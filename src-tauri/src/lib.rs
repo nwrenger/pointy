@@ -92,8 +92,6 @@ pub fn run() {
 
             let main_window = handle.get_webview_window("main").unwrap();
             let scale_factor = main_window.current_monitor()?.unwrap().scale_factor();
-            let size: LogicalSize<u32> =
-                LogicalSize::from_physical(main_window.outer_size().unwrap(), scale_factor);
 
             let new_window_shortcut = Shortcut::from_str("CommandOrControl+Shift+Space").unwrap();
             handle.plugin(
@@ -105,6 +103,12 @@ pub fn run() {
                                     // get mouse position
                                     let device_state = DeviceState::new();
                                     let pos = device_state.get_mouse().coords;
+
+                                    // get window size
+                                    let size: LogicalSize<u32> = LogicalSize::from_physical(
+                                        main_window.outer_size().unwrap(),
+                                        scale_factor,
+                                    );
 
                                     // window size divided by 2 for centering relative to the mouse position
                                     let logical_pos = LogicalPosition::new(
