@@ -1,21 +1,44 @@
 <script lang="ts">
 	import { getCurrentWindow, LogicalSize } from '@tauri-apps/api/window';
-	import { invoke } from '@tauri-apps/api/core';
-	import { items } from './../lib';
+	import {
+		activated_plugins,
+		call_plugin_command,
+		read_to_string,
+		type PluginInfo
+	} from '$lib/api';
+	import { BaseDirectory, watchImmediate } from '@tauri-apps/plugin-fs';
+
+	let items: PluginInfo[] = $state([]);
+
+	async function populateItems() {
+		items = await activated_plugins();
+		console.log('asd');
+	}
+
+	// Once on start
+	populateItems();
+
+	// Update items on directory changes
+	watchImmediate('plugins', populateItems, {
+		baseDir: BaseDirectory.AppData,
+		recursive: true
+	});
 
 	const padding = 5;
 	const iconSize = 33;
 
-	const radius = items.length * 12;
-	const angleStep = 360 / items.length;
+	let radius = $derived(items.length * 12);
+	let angleStep = $derived(360 / items.length);
 
-	const size = 2 * (radius + iconSize / 2) + 2 * padding;
-	const current_window = getCurrentWindow();
+	let size = $derived(2 * (radius + iconSize / 2) + 2 * padding);
+	let current_window = getCurrentWindow();
 
-	current_window.setSize(new LogicalSize(size, size));
+	$effect(() => {
+		current_window.setSize(new LogicalSize(size, size));
+	});
 	current_window.listen('select-option', async () => {
 		if (current_option) {
-			await invoke(current_option);
+			await call_plugin_command(current_option);
 			current_option = undefined;
 		}
 	});
@@ -49,12 +72,13 @@
 			{@const angle = angleStep * i - 90}
 			<button
 				class="absolute btn-icon cursor-pointer transition-all focus:outline-none
-										{current_option === item.action
+										{current_option === item.abbreveation
 					? 'outline preset-tonal-success duration-75'
 					: 'preset-tonal-surface duration-0'}"
-				title={item.descrption}
+				aria-label={item.name}
+				title={item.description}
 				onfocus={() => {}}
-				onmouseover={() => mouseouseEnter(item.action)}
+				onmouseover={() => mouseouseEnter(item.abbreveation)}
 				onmouseleave={mouseouseLeave}
 				style={`
 					top: 50%;
@@ -65,7 +89,11 @@
 							   rotate(${-angle}deg);
 				`}
 			>
-				<item.icon class="cursor-pointer" />
+				{#await read_to_string(item.icon_path) then contents}
+					<span class="cursor-pointer">
+						{@html contents}
+					</span>
+				{/await}
 			</button>
 		{/each}
 	</div>

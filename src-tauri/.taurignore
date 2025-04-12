@@ -1,0 +1,6 @@
+# Folder
+plugins
+target
+
+# Files
+Cargo.lock

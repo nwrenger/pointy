@@ -1,94 +1,144 @@
-use std::str::FromStr;
+pub mod api;
+
+use std::{ffi::CString, fs, path::PathBuf, str::FromStr};
 
 use device_query::{DeviceQuery, DeviceState};
-use image::{DynamicImage, Luma, RgbaImage};
-use meval::eval_str;
-use qrcode::QrCode;
-use rand::distr::{Alphanumeric, SampleString};
+use libloading::{Library, Symbol};
+use serde::{Deserialize, Serialize};
 use tauri::{
-    image::Image,
     menu::{Menu, MenuItem},
     tray::TrayIconBuilder,
     AppHandle, Emitter, LogicalPosition, LogicalSize, Manager,
 };
-use tauri_plugin_clipboard_manager::ClipboardExt;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
-use xcap::Monitor;
 
-/// Captures a screenshot of the current monitor by mouse position and copies the result to the clipboard.
+#[derive(Deserialize)]
+struct PluginManifest {
+    name: String,
+    description: String,
+    icon: String,
+}
+
+#[derive(Serialize)]
+struct PluginInfo {
+    pub abbreveation: String,
+    pub name: String,
+    pub description: String,
+    pub icon_path: String,
+}
+
+/// Reads the "plugins/enabled.json" file and returns a list of activated plugins.
 #[tauri::command]
-async fn capture_screenshot(app: AppHandle) -> Result<(), String> {
-    let monitor = find_current_monitor()?;
-    let image_buffer = monitor.capture_image().map_err(|e| e.to_string())?;
+fn activated_plugins(app: AppHandle) -> Result<Vec<PluginInfo>, String> {
+    let plugins_path = app.state::<PathBuf>().inner();
 
-    clipboard_write_image(image_buffer, &app)
+    let mut enabled_path = plugins_path.clone();
+    enabled_path.push("enabled.json");
+
+    let data = std::fs::read_to_string(&enabled_path)
+        .map_err(|e| format!("Failed to read enabled.json: {}", e))?;
+
+    let plugin_folders: Vec<String> =
+        serde_json::from_str(&data).map_err(|e| format!("Failed to parse enabled.json: {}", e))?;
+
+    let mut plugins = Vec::new();
+    for folder in plugin_folders {
+        let mut manifest_path = plugins_path.clone();
+        manifest_path.push(&folder);
+        manifest_path.push("plugin_manifest.json");
+
+        let manifest_data = std::fs::read_to_string(&manifest_path)
+            .map_err(|e| format!("Failed to read {}: {}", manifest_path.display(), e))?;
+
+        let manifest: PluginManifest = serde_json::from_str(&manifest_data)
+            .map_err(|e| format!("Failed to parse {}: {}", manifest_path.display(), e))?;
+
+        let mut icon_path = plugins_path.clone();
+        icon_path.push(&folder);
+        icon_path.push(&manifest.icon);
+
+        plugins.push(PluginInfo {
+            abbreveation: folder,
+            name: manifest.name,
+            description: manifest.description,
+            icon_path: icon_path.to_string_lossy().to_string(),
+        });
+    }
+
+    Ok(plugins)
 }
 
-pub fn find_current_monitor() -> Result<Monitor, String> {
-    let device_state = DeviceState::new();
-    let mouse_coords = device_state.get_mouse().coords;
-
-    Monitor::from_point(mouse_coords.0, mouse_coords.1).map_err(|e| e.to_string())
-}
-
-/// Evaluates a math equasion and copies the result to the clipboard.
+/// Calls a command from a specified plugin. It loads the appropriate dynamic library
+/// for the current OS from the plugin directory and calls the exported function.
+/// The function is assumed to be:
+///
+///   pub extern "C" fn run_plugin_command() -> *mut c_char
+///
 #[tauri::command]
-fn evaluate_math_equasion(app: AppHandle) -> Result<(), String> {
-    let clipboard_text = clipboard_get_text(&app)?;
-    let text = eval_str(clipboard_text)
-        .map_err(|e| e.to_string())?
-        .to_string();
+fn call_plugin_command(app: AppHandle, plugin_name: String) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    let lib_filename = "windows.dll";
+    #[cfg(target_os = "macos")]
+    let lib_filename = "mac.dylib";
+    #[cfg(target_os = "linux")]
+    let lib_filename = "linux.so";
 
-    clipboard_write_text(text, &app)
+    let mut lib_path = app.state::<PathBuf>().inner().clone();
+    lib_path.push(&plugin_name);
+    lib_path.push(lib_filename);
+
+    unsafe {
+        let lib = Library::new(&lib_path)
+            .map_err(|e| format!("Failed to load library {}: {}", lib_path.display(), e))?;
+
+        let func: Symbol<unsafe extern "C" fn(*const AppHandle) -> *mut std::os::raw::c_char> = lib
+            .get(b"run_plugin_command\0")
+            .map_err(|e| format!("Failed to find symbol 'run_plugin_command': {}", e))?;
+
+        let app_ptr: *const AppHandle = &app as *const _;
+
+        let raw_ptr = func(app_ptr);
+        if raw_ptr.is_null() {
+            return Err("Plugin returned a null pointer".to_string());
+        }
+
+        let cstring = CString::from_raw(raw_ptr);
+        let result_str = cstring
+            .into_string()
+            .map_err(|e| format!("Failed to convert C string: {}", e))?;
+
+        // As with the helper in `crate::api`, if the string is empty no error occurred
+        if result_str.is_empty() {
+            Ok(())
+        } else {
+            Err(result_str)
+        }
+    }
 }
 
-/// Generates a qrcode from copied text and saves it to downloads.
+/// Reads the file of a certain path to string.
 #[tauri::command]
-fn generate_qrcode(app: AppHandle) -> Result<(), String> {
-    let clipboard_text = clipboard_get_text(&app)?;
-
-    let code = QrCode::new(clipboard_text.as_bytes()).map_err(|e| e.to_string())?;
-    let image_luma = code.render::<Luma<u8>>().build();
-
-    let dynamic_image = DynamicImage::ImageLuma8(image_luma);
-    let image_buffer = dynamic_image.to_rgba8();
-
-    clipboard_write_image(image_buffer, &app)
+fn read_to_string(path: PathBuf) -> Result<String, String> {
+    fs::read_to_string(path).map_err(|e| e.to_string())
 }
 
-/// Creates a 12 character long very secure password and copies it to the clipboard.
-#[tauri::command]
-fn create_secure_password(app: AppHandle) -> Result<(), String> {
-    let mut rng = rand::rng();
-    let text = Alphanumeric.sample_string(&mut rng, 12);
-
-    clipboard_write_text(text, &app)
-}
-
-pub fn clipboard_get_text(app: &AppHandle) -> Result<String, String> {
-    app.clipboard().read_text().map_err(|e| e.to_string())
-}
-
-pub fn clipboard_write_text(text: String, app: &AppHandle) -> Result<(), String> {
-    app.clipboard().write_text(&text).map_err(|e| e.to_string())
-}
-
-pub fn clipboard_write_image(image_buffer: RgbaImage, app: &AppHandle) -> Result<(), String> {
-    let raw_pixels: &[u8] = image_buffer.as_raw();
-    let width = image_buffer.width();
-    let height = image_buffer.height();
-
-    let image = Image::new(raw_pixels, width, height);
-
-    app.clipboard()
-        .write_image(&image)
-        .map_err(|e| e.to_string())
-}
-
+/// Starting point for desktop app
 pub fn run() {
     tauri::Builder::default()
         .setup(|app| {
             let handle = app.handle();
+
+            let mut plugins_path = app.path().app_data_dir()?;
+            plugins_path.push("plugins");
+            if !plugins_path.exists() {
+                fs::create_dir_all(&plugins_path).map_err(|_| tauri::Error::UnknownPath)?;
+            }
+
+            let mut enabled_path = plugins_path.clone();
+            enabled_path.push("enabled.json");
+            if !enabled_path.exists() {
+                fs::write(&enabled_path, "[]").map_err(|_| tauri::Error::UnknownPath)?;
+            }
 
             let main_window = handle.get_webview_window("main").unwrap();
             let scale_factor = main_window
@@ -158,14 +208,16 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
 
+            // State
+            app.manage(plugins_path);
+
             Ok(())
         })
-        .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_fs::init())
         .invoke_handler(tauri::generate_handler![
-            capture_screenshot,
-            evaluate_math_equasion,
-            generate_qrcode,
-            create_secure_password
+            activated_plugins,
+            call_plugin_command,
+            read_to_string
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
