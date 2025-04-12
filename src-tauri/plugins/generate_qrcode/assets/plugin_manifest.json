@@ -1,5 +1,0 @@
-{
-  "name": "Generate a QrCode",
-  "description": "Generates a qrcode from copied text and saves it to the clipboard.",
-  "icon": "icon.svg"
-}

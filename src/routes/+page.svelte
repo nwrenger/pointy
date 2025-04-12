@@ -1,17 +1,17 @@
 <script lang="ts">
 	import { getCurrentWindow, LogicalSize } from '@tauri-apps/api/window';
 	import {
-		activated_plugins,
-		call_plugin_command,
+		activated_extensions,
+		run_extension,
 		read_to_string,
-		type PluginInfo
+		type ExtensionInfo
 	} from '$lib/api';
 	import { BaseDirectory, watchImmediate } from '@tauri-apps/plugin-fs';
 
-	let items: PluginInfo[] = $state([]);
+	let items: ExtensionInfo[] = $state([]);
 
 	async function populateItems() {
-		items = await activated_plugins();
+		items = await activated_extensions();
 		console.log('asd');
 	}
 
@@ -38,7 +38,7 @@
 	});
 	current_window.listen('select-option', async () => {
 		if (current_option) {
-			await call_plugin_command(current_option);
+			await run_extension(current_option);
 			current_option = undefined;
 		}
 	});

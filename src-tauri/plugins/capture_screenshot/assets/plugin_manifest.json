@@ -1,5 +1,0 @@
-{
-  "name": "Capture a Screenshot",
-  "description": "Captures a screenshot of the current monitor by mouse position and copies the result to the clipboard.",
-  "icon": "icon.svg"
-}

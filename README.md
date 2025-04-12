@@ -2,9 +2,10 @@
 
 ## Current Todos
 
-- [ ] Plugins system
+- [ ] Extension System
   - [x] General implementation
   - [ ] Add Versioning
+  - [ ] Add Disabling/Enabling Extensions
   - [ ] UI
   - [ ] Online Hosting on Github
 - [ ] Add loading and copied/completed state to tray icon

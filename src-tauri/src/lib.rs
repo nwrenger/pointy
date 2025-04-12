@@ -13,51 +13,52 @@ use tauri::{
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
 #[derive(Deserialize)]
-struct PluginManifest {
+struct ExtensionManifest {
     name: String,
     description: String,
     icon: String,
 }
 
 #[derive(Serialize)]
-struct PluginInfo {
+struct ExtensionInfo {
     pub abbreveation: String,
     pub name: String,
     pub description: String,
     pub icon_path: String,
+    // enabled - TODO
 }
 
-/// Reads the "plugins/enabled.json" file and returns a list of activated plugins.
+/// Reads the "extensions/enabled.json" file and returns a list of activated extensions.
 #[tauri::command]
-fn activated_plugins(app: AppHandle) -> Result<Vec<PluginInfo>, String> {
-    let plugins_path = app.state::<PathBuf>().inner();
+fn activated_extensions(app: AppHandle) -> Result<Vec<ExtensionInfo>, String> {
+    let extensions_path = app.state::<PathBuf>().inner();
 
-    let mut enabled_path = plugins_path.clone();
+    let mut enabled_path = extensions_path.clone();
     enabled_path.push("enabled.json");
 
     let data = std::fs::read_to_string(&enabled_path)
         .map_err(|e| format!("Failed to read enabled.json: {}", e))?;
 
-    let plugin_folders: Vec<String> =
+    let extension_folders: Vec<String> =
         serde_json::from_str(&data).map_err(|e| format!("Failed to parse enabled.json: {}", e))?;
 
-    let mut plugins = Vec::new();
-    for folder in plugin_folders {
-        let mut manifest_path = plugins_path.clone();
+    let mut extensions = Vec::new();
+    for folder in extension_folders {
+        let mut manifest_path = extensions_path.clone();
         manifest_path.push(&folder);
-        manifest_path.push("plugin_manifest.json");
+        manifest_path.push("manifest.json");
 
         let manifest_data = std::fs::read_to_string(&manifest_path)
             .map_err(|e| format!("Failed to read {}: {}", manifest_path.display(), e))?;
 
-        let manifest: PluginManifest = serde_json::from_str(&manifest_data)
+        let manifest: ExtensionManifest = serde_json::from_str(&manifest_data)
             .map_err(|e| format!("Failed to parse {}: {}", manifest_path.display(), e))?;
 
-        let mut icon_path = plugins_path.clone();
+        let mut icon_path = extensions_path.clone();
         icon_path.push(&folder);
         icon_path.push(&manifest.icon);
 
-        plugins.push(PluginInfo {
+        extensions.push(ExtensionInfo {
             abbreveation: folder,
             name: manifest.name,
             description: manifest.description,
@@ -65,17 +66,17 @@ fn activated_plugins(app: AppHandle) -> Result<Vec<PluginInfo>, String> {
         });
     }
 
-    Ok(plugins)
+    Ok(extensions)
 }
 
-/// Calls a command from a specified plugin. It loads the appropriate dynamic library
-/// for the current OS from the plugin directory and calls the exported function.
+/// Runs a specified extension. It loads the appropriate dynamic library
+/// for the current OS from the extension directory and calls the exported function.
 /// The function is assumed to be:
 ///
-///   pub extern "C" fn run_plugin_command() -> *mut c_char
+///   pub extern "C" fn run() -> *mut c_char
 ///
 #[tauri::command]
-fn call_plugin_command(app: AppHandle, plugin_name: String) -> Result<(), String> {
+fn run_extension(app: AppHandle, extension_name: String) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     let lib_filename = "windows.dll";
     #[cfg(target_os = "macos")]
@@ -83,23 +84,26 @@ fn call_plugin_command(app: AppHandle, plugin_name: String) -> Result<(), String
     #[cfg(target_os = "linux")]
     let lib_filename = "linux.so";
 
-    let mut lib_path = app.state::<PathBuf>().inner().clone();
-    lib_path.push(&plugin_name);
-    lib_path.push(lib_filename);
+    let mut extensions_path = app.state::<PathBuf>().inner().clone();
+    extensions_path.push(&extension_name);
+    extensions_path.push(lib_filename);
 
     unsafe {
-        let lib = Library::new(&lib_path)
-            .map_err(|e| format!("Failed to load library {}: {}", lib_path.display(), e))?;
+        let lib = Library::new(&extensions_path).map_err(|e| {
+            format!(
+                "Failed to load extension {}: {}",
+                extensions_path.display(),
+                e
+            )
+        })?;
 
-        let func: Symbol<unsafe extern "C" fn(*const AppHandle) -> *mut std::os::raw::c_char> = lib
-            .get(b"run_plugin_command\0")
-            .map_err(|e| format!("Failed to find symbol 'run_plugin_command': {}", e))?;
+        let func: Symbol<unsafe extern "C" fn() -> *mut std::os::raw::c_char> =
+            lib.get(b"run\0")
+                .map_err(|e| format!("Failed to find symbol 'run': {}", e))?;
 
-        let app_ptr: *const AppHandle = &app as *const _;
-
-        let raw_ptr = func(app_ptr);
+        let raw_ptr = func();
         if raw_ptr.is_null() {
-            return Err("Plugin returned a null pointer".to_string());
+            return Err("Extension returned a null pointer".to_string());
         }
 
         let cstring = CString::from_raw(raw_ptr);
@@ -128,13 +132,13 @@ pub fn run() {
         .setup(|app| {
             let handle = app.handle();
 
-            let mut plugins_path = app.path().app_data_dir()?;
-            plugins_path.push("plugins");
-            if !plugins_path.exists() {
-                fs::create_dir_all(&plugins_path).map_err(|_| tauri::Error::UnknownPath)?;
+            let mut extensions_path = app.path().app_data_dir()?;
+            extensions_path.push("extensions");
+            if !extensions_path.exists() {
+                fs::create_dir_all(&extensions_path).map_err(|_| tauri::Error::UnknownPath)?;
             }
 
-            let mut enabled_path = plugins_path.clone();
+            let mut enabled_path = extensions_path.clone();
             enabled_path.push("enabled.json");
             if !enabled_path.exists() {
                 fs::write(&enabled_path, "[]").map_err(|_| tauri::Error::UnknownPath)?;
@@ -209,14 +213,14 @@ pub fn run() {
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
 
             // State
-            app.manage(plugins_path);
+            app.manage(extensions_path);
 
             Ok(())
         })
         .plugin(tauri_plugin_fs::init())
         .invoke_handler(tauri::generate_handler![
-            activated_plugins,
-            call_plugin_command,
+            activated_extensions,
+            run_extension,
             read_to_string
         ])
         .run(tauri::generate_context!())

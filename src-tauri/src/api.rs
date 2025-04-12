@@ -1,4 +1,3 @@
-pub use arboard;
 pub use device_query;
 pub use image;
 pub use tauri;
@@ -8,39 +7,31 @@ use std::borrow::Cow;
 use arboard::{Clipboard, ImageData};
 use image::RgbaImage;
 
-/// This macro generates the FFI function `run_plugin_command` which:
-/// - Converts the incoming raw pointer to a `&tauri::AppHandle`.
-/// - Executes your custom logic (provided as a closure) that returns a Result<String, String>.
-/// - Converts that result into a C string (`*mut c_char`) for return.
+/// This macro generates the FFI function `run` which:
+/// - Executes your custom logic (provided as a closure) that returns a `Result<(), String>`.
+/// - Converts that result into a `CString` (`*mut c_char`) for return.
 ///
 /// Usage:
 /// ```rust
-/// define_plugin_command! { |_app| {
-///         // Your custom logic here. For example:
-///         let clipboard_text = clipboard_get_text()?;   // You can call helper functions here.
-///         let text = eval_str(clipboard_text)
-///             .map_err(|e| e.to_string())?
-///             .to_string();
+/// extension_entry! {
+///     // Your custom logic here. For example:
+///     let clipboard_text = clipboard_get_text()?;   // You can call helper functions here.
+///     let text = eval_str(clipboard_text)
+///         .map_err(|e| e.to_string())?
+///         .to_string();
 ///
-///         clipboard_write_text(text)
-///     }
+///     clipboard_write_text(text)
 /// }
 /// ```
 #[macro_export]
-macro_rules! define_plugin_command {
-    ( |$app:ident| $body:block ) => {
+macro_rules! extension_entry {
+    ($($body:tt)*) => {
         #[no_mangle]
-        pub extern "C" fn run_plugin_command(
-            app_handle_ptr: *const pointy_lib::api::tauri::AppHandle,
-        ) -> *mut ::std::os::raw::c_char {
-            let $app: &pointy_lib::api::tauri::AppHandle = unsafe {
-                assert!(!app_handle_ptr.is_null(), "Received null pointer");
-                &*app_handle_ptr
-            };
-            let result: Result<(), String> = (|| $body)();
+        pub extern "C" fn run() -> *mut std::os::raw::c_char {
+            let result: Result<(), String> = (|| { $($body)* })();
             match result {
-                Ok(_) => ::std::ffi::CString::new("").unwrap().into_raw(),
-                Err(e) => ::std::ffi::CString::new(e).unwrap().into_raw(),
+                Ok(()) => std::ffi::CString::new("").unwrap().into_raw(),
+                Err(e) => std::ffi::CString::new(e).unwrap().into_raw(),
             }
         }
     };

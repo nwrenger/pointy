@@ -1,5 +1,0 @@
-{
-  "name": "Creates a secure Password",
-  "description": "Creates a 12 character long very secure password and copies it to the clipboard.",
-  "icon": "icon.svg"
-}
