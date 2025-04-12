@@ -1,0 +1,17 @@
+[package]
+name = "create_secure_password"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[profile.release]
+lto = "thin"
+opt-level = 3
+codegen-units = 1
+strip = true
+
+[dependencies]
+rand = "0.9"
+pointy = { path = "./../../" }
