@@ -1,11 +1,14 @@
-# Lockfile
-**/Cargo.lock
+# Lockfiles
+Cargo.lock
+app/bun.lock
 
 # Build Files
 
 ## Rust
-**/target
-**/bundled
+target
+
+## Extensions
+bundled-extensions
 
 ## Svelte
 **/node_modules

@@ -5,12 +5,6 @@ edition = "2021"
 
 [lib]
 
-[profile.release]
-lto = "thin"
-opt-level = 3
-codegen-units = 1
-strip = true
-
 [dependencies]
 device_query = "3"
 image = "0.25"

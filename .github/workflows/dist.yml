@@ -46,7 +46,7 @@ jobs:
       - name: Rust cache
         uses: swatinem/rust-cache@v2
         with:
-          workspaces: "./app/backend -> target"
+          workspaces: "./ -> target"
 
       - name: install frontend dependencies
         working-directory: app
