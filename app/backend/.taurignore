@@ -5,6 +5,7 @@
 **/.svelte-kit
 **/.svelte-kit
 **/.github
+**/.git
 
 # Files
 **/Cargo.lock
