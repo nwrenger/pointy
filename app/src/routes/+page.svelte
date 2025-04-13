@@ -12,14 +12,13 @@
 
 	async function populateItems() {
 		items = await activated_extensions();
-		console.log('asd');
 	}
 
 	// Once on start
 	populateItems();
 
 	// Update items on directory changes
-	watchImmediate('plugins', populateItems, {
+	watchImmediate('extensions', populateItems, {
 		baseDir: BaseDirectory.AppData,
 		recursive: true
 	});
