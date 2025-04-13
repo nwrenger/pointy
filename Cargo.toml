@@ -1,0 +1,2 @@
+[workspace]
+members = ["app/backend", "crates/pointy_api", "crates/extensions/*"]

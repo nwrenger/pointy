@@ -1,0 +1,11 @@
+# Folders
+**/target
+**/bundled
+**/node_modules
+**/.svelte-kit
+**/.svelte-kit
+**/.github
+
+# Files
+**/Cargo.lock
+**/bun.lock
