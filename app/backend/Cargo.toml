@@ -2,7 +2,7 @@
 name = "pointy"
 version = "0.1.0"
 description = "Workflow improvemets by pointer selectable addons."
-authors = ["you"]
+authors = ["nils@wrenger.net"]
 edition = "2021"
 
 [lib]
@@ -21,3 +21,5 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 pointy_api = { path = "../../crates/pointy_api" }
 libloading = "0.8.6"
+tauri-plugin-opener = "2.2.6"
+tauri-plugin-autostart = "2.3.0"

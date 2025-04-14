@@ -1,21 +1,28 @@
 <script lang="ts">
 	import { getCurrentWindow, LogicalSize } from '@tauri-apps/api/window';
 	import {
-		activated_extensions,
 		run_extension,
 		read_to_string,
-		type ExtensionInfo
+		type ExtensionInfo,
+		update_extensions,
+		update_config
 	} from '$lib/api';
-	import { BaseDirectory, watchImmediate } from '@tauri-apps/plugin-fs';
+	import { BaseDirectory, watchImmediate, type WatchEvent } from '@tauri-apps/plugin-fs';
 
 	let items: ExtensionInfo[] = $state([]);
+	let debounceTimeout1: NodeJS.Timeout | null = null;
 
-	async function populateItems() {
-		items = await activated_extensions();
+	async function populateItems(event: WatchEvent | undefined) {
+		if (debounceTimeout1) clearTimeout(debounceTimeout1);
+		debounceTimeout1 = setTimeout(async () => {
+			let all_items = await update_extensions();
+			items = all_items.filter((i) => i.enabled);
+			debounceTimeout1 = null;
+		}, 100);
 	}
 
 	// Once on start
-	populateItems();
+	populateItems(undefined);
 
 	// Update items on directory changes
 	watchImmediate('extensions', populateItems, {
@@ -23,14 +30,29 @@
 		recursive: true
 	});
 
-	const padding = 5;
-	const iconSize = 33;
+	let debounceTimeout2: NodeJS.Timeout | null = null;
+
+	async function populateChanges() {
+		if (debounceTimeout2) clearTimeout(debounceTimeout2);
+		debounceTimeout2 = setTimeout(async () => {
+			console.log('Config changes getting applied!');
+			await update_config();
+			debounceTimeout2 = null;
+		}, 100);
+	}
+
+	// Update config on directory changes
+	watchImmediate('config.json', populateChanges, {
+		baseDir: BaseDirectory.AppData,
+		recursive: false
+	});
+
+	const buttonSize = 33;
+	const current_window = getCurrentWindow();
 
 	let radius = $derived(items.length * 12);
 	let angleStep = $derived(360 / items.length);
-
-	let size = $derived(2 * (radius + iconSize / 2) + 2 * padding);
-	let current_window = getCurrentWindow();
+	let size = $derived(2 * radius + buttonSize + 2);
 
 	$effect(() => {
 		current_window.setSize(new LogicalSize(size, size));

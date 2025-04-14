@@ -1,14 +1,54 @@
-use std::{ffi::CString, fs, path::PathBuf, str::FromStr};
+use std::{
+    ffi::CString,
+    fs::{self, File},
+    io::BufWriter,
+    path::PathBuf,
+    str::FromStr,
+    sync::RwLock,
+};
 
 use libloading::{Library, Symbol};
 use pointy_api::device_query::{DeviceQuery, DeviceState};
 use serde::{Deserialize, Serialize};
 use tauri::{
-    menu::{Menu, MenuItem},
+    menu::{CheckMenuItemBuilder, IsMenuItem, MenuBuilder, MenuItemBuilder, SubmenuBuilder},
     tray::TrayIconBuilder,
-    AppHandle, Emitter, LogicalPosition, LogicalSize, Manager,
+    AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, State, Wry,
 };
+use tauri_plugin_autostart::ManagerExt;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
+use tauri_plugin_opener::OpenerExt;
+
+struct AppState {
+    config_path: PathBuf,
+    extensions_path: PathBuf,
+    app_config: RwLock<AppConfig>,
+}
+
+impl AppState {
+    fn new(config_path: PathBuf, extensions_path: PathBuf, app_config: AppConfig) -> Self {
+        Self {
+            config_path,
+            extensions_path,
+            app_config: RwLock::new(app_config),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+struct AppConfig {
+    autostart: bool,
+    shortcut: String,
+}
+
+impl Default for AppConfig {
+    fn default() -> Self {
+        Self {
+            autostart: false,
+            shortcut: String::from("CommandOrControl+Shift+Space"),
+        }
+    }
+}
 
 #[derive(Deserialize)]
 struct ExtensionManifest {
@@ -23,48 +63,170 @@ struct ExtensionInfo {
     pub name: String,
     pub description: String,
     pub icon_path: String,
-    // enabled - TODO
+    pub enabled: bool,
 }
 
-/// Reads the "extensions/enabled.json" file and returns a list of activated extensions.
+/// Populates the tray menu and returns the currently activated extensions.
 #[tauri::command]
-fn activated_extensions(app: AppHandle) -> Result<Vec<ExtensionInfo>, String> {
-    let extensions_path = app.state::<PathBuf>().inner();
+fn update_extensions(
+    app: AppHandle,
+    app_state: State<'_, AppState>,
+) -> Result<Vec<ExtensionInfo>, String> {
+    let info = info_extensions(app_state)?;
 
-    let mut enabled_path = extensions_path.clone();
-    enabled_path.push("enabled.json");
+    let mut extensions = vec![];
+
+    for ExtensionInfo {
+        abbreveation,
+        name,
+        enabled,
+        ..
+    } in &info
+    {
+        let check_item = CheckMenuItemBuilder::new(name)
+            .id(format!("ext_{}", abbreveation))
+            .checked(*enabled)
+            .enabled(true)
+            .build(&app)
+            .map_err(|e| e.to_string())?;
+        extensions.push(check_item);
+    }
+
+    let extensions_refs: Vec<&dyn IsMenuItem<Wry>> = extensions
+        .iter()
+        .map(|item| item as &dyn IsMenuItem<_>)
+        .collect();
+
+    let settings_i = SubmenuBuilder::new(&app, "Settings")
+        .id("settings")
+        .text("general", "General")
+        .separator()
+        .items(extensions_refs.as_slice())
+        .separator()
+        .text("manage_extensions", "Manage Extensions...")
+        .text("download_extensions", "Download Extensions")
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let menu = MenuBuilder::new(&app)
+        .id("tray_menu")
+        .about(None)
+        .item(&settings_i)
+        .separator()
+        .quit()
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    if let Some(tray) = app.tray_by_id("main_tray") {
+        tray.set_menu(Some(menu)).map_err(|e| e.to_string())?;
+    }
+
+    Ok(info)
+}
+
+/// Should be called when the config changed.
+#[tauri::command]
+fn update_config(app: AppHandle, app_state: State<'_, AppState>) -> Result<(), String> {
+    let old_app_config = app_state.app_config.read().map_err(|e| e.to_string())?;
+    let app_config_data = fs::read_to_string(&app_state.config_path).map_err(|e| e.to_string())?;
+    let new_app_config: AppConfig =
+        serde_json::from_str(&app_config_data).map_err(|e| e.to_string())?;
+
+    // Remove old shortcut
+    let old_shortcut = Shortcut::from_str(&old_app_config.shortcut).map_err(|e| e.to_string())?;
+    app.global_shortcut()
+        .unregister(old_shortcut)
+        .map_err(|e| e.to_string())?;
+
+    drop(old_app_config);
+
+    // Add new shortcut
+    let new_shortcut = Shortcut::from_str(&new_app_config.shortcut).map_err(|e| e.to_string())?;
+    app.global_shortcut()
+        .register(new_shortcut)
+        .map_err(|e| e.to_string())?;
+
+    // Configure autostart
+    let autostart_manager = app.autolaunch();
+    if new_app_config.autostart {
+        autostart_manager.enable().map_err(|e| e.to_string())?;
+    } else {
+        autostart_manager.disable().map_err(|e| e.to_string())?;
+    }
+
+    let mut w = app_state.app_config.write().map_err(|e| e.to_string())?;
+    *w = new_app_config;
+
+    Ok(())
+}
+
+/// Reads the "extensions/*" folder and returns a list of all extensions with their info.
+#[tauri::command]
+fn info_extensions(app_state: State<'_, AppState>) -> Result<Vec<ExtensionInfo>, String> {
+    let extensions_path = app_state.extensions_path.clone();
+
+    let enabled_path = extensions_path.join("enabled.json");
 
     let data = std::fs::read_to_string(&enabled_path)
         .map_err(|e| format!("Failed to read enabled.json: {}", e))?;
 
-    let extension_folders: Vec<String> =
+    let enabled: Vec<PathBuf> =
         serde_json::from_str(&data).map_err(|e| format!("Failed to parse enabled.json: {}", e))?;
 
+    let dirs = extensions_path.read_dir().map_err(|e| e.to_string())?;
+
     let mut extensions = Vec::new();
-    for folder in extension_folders {
-        let mut manifest_path = extensions_path.clone();
-        manifest_path.push(&folder);
-        manifest_path.push("manifest.json");
+    let mut paths: Vec<PathBuf> = dirs.filter_map(|e| Some(e.ok()?.path())).collect();
+    paths.sort();
 
-        let manifest_data = std::fs::read_to_string(&manifest_path)
-            .map_err(|e| format!("Failed to read {}: {}", manifest_path.display(), e))?;
+    for path in paths {
+        if path.is_dir() {
+            let manifest_path = extensions_path.join(&path).join("manifest.json");
 
-        let manifest: ExtensionManifest = serde_json::from_str(&manifest_data)
-            .map_err(|e| format!("Failed to parse {}: {}", manifest_path.display(), e))?;
+            let manifest_data = std::fs::read_to_string(&manifest_path)
+                .map_err(|e| format!("Failed to read {}: {}", manifest_path.display(), e))?;
 
-        let mut icon_path = extensions_path.clone();
-        icon_path.push(&folder);
-        icon_path.push(&manifest.icon);
+            let manifest: ExtensionManifest = serde_json::from_str(&manifest_data)
+                .map_err(|e| format!("Failed to parse {}: {}", manifest_path.display(), e))?;
 
-        extensions.push(ExtensionInfo {
-            abbreveation: folder,
-            name: manifest.name,
-            description: manifest.description,
-            icon_path: icon_path.to_string_lossy().to_string(),
-        });
+            let icon_path = extensions_path.join(&path).join(&manifest.icon);
+
+            extensions.push(ExtensionInfo {
+                abbreveation: path
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string(),
+                name: manifest.name,
+                description: manifest.description,
+                icon_path: icon_path.to_string_lossy().to_string(),
+                enabled: enabled.contains(&PathBuf::from(path.file_name().unwrap_or_default())),
+            });
+        }
     }
 
     Ok(extensions)
+}
+
+/// Toggles an `extension`
+fn toggle_extension(extension: String, app_state: State<'_, AppState>) -> Result<(), String> {
+    let enabled_path = app_state.extensions_path.join("enabled.json");
+    let enabled_data = std::fs::read_to_string(&enabled_path)
+        .map_err(|e| format!("Failed to read enabled.json: {}", e))?;
+    let mut enabled: Vec<String> = serde_json::from_str(&enabled_data)
+        .map_err(|e| format!("Failed to parse {}: {}", enabled_path.display(), e))?;
+
+    if enabled.contains(&extension) {
+        enabled.retain(|item| item != &extension);
+    } else {
+        enabled.push(extension);
+    }
+
+    let file = File::create(enabled_path).map_err(|e| e.to_string())?;
+    let writer = BufWriter::new(file);
+    serde_json::to_writer(writer, &enabled).map_err(|e| e.to_string())?;
+
+    Ok(())
 }
 
 /// Runs a specified extension. It loads the appropriate dynamic library
@@ -74,7 +236,7 @@ fn activated_extensions(app: AppHandle) -> Result<Vec<ExtensionInfo>, String> {
 ///   pub extern "C" fn run() -> *mut c_char
 ///
 #[tauri::command]
-fn run_extension(app: AppHandle, extension_name: String) -> Result<(), String> {
+fn run_extension(extension_name: String, app_state: State<'_, AppState>) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     let lib_filename = "windows.dll";
     #[cfg(target_os = "macos")]
@@ -82,9 +244,10 @@ fn run_extension(app: AppHandle, extension_name: String) -> Result<(), String> {
     #[cfg(target_os = "linux")]
     let lib_filename = "linux.so";
 
-    let mut extensions_path = app.state::<PathBuf>().inner().clone();
-    extensions_path.push(&extension_name);
-    extensions_path.push(lib_filename);
+    let extensions_path = app_state
+        .extensions_path
+        .join(&extension_name)
+        .join(lib_filename);
 
     unsafe {
         let lib = Library::new(&extensions_path).map_err(|e| {
@@ -130,28 +293,44 @@ pub fn run() {
         .setup(|app| {
             let handle = app.handle();
 
-            let mut extensions_path = app.path().app_data_dir()?;
-            extensions_path.push("extensions");
+            // Inital App Setup (Paths)
+            let config_path = app.path().app_data_dir()?.join("config.json");
+            if !config_path.exists() {
+                fs::write(&config_path, serde_json::to_string(&AppConfig::default())?)?;
+            }
+            let extensions_path = app.path().app_data_dir()?.join("extensions");
             if !extensions_path.exists() {
-                fs::create_dir_all(&extensions_path).map_err(|_| tauri::Error::UnknownPath)?;
+                fs::create_dir_all(&extensions_path)?;
             }
-
-            let mut enabled_path = extensions_path.clone();
-            enabled_path.push("enabled.json");
+            let enabled_path = extensions_path.join("enabled.json");
             if !enabled_path.exists() {
-                fs::write(&enabled_path, "[]").map_err(|_| tauri::Error::UnknownPath)?;
+                fs::write(&enabled_path, "[]")?;
             }
 
+            // Initial App Config
+            let app_config_data = fs::read_to_string(&config_path)?;
+            let app_config: AppConfig = serde_json::from_str(&app_config_data)?;
+
+            // Global Shortcuts
             let main_window = handle.get_webview_window("main").unwrap();
             let scale_factor = main_window
                 .current_monitor()?
                 .map_or(1., |f| f.scale_factor());
 
-            let new_window_shortcut = Shortcut::from_str("CommandOrControl+Shift+Space").unwrap();
             handle.plugin(
                 tauri_plugin_global_shortcut::Builder::new()
-                    .with_handler(move |_app, shortcut, event| {
-                        if shortcut == &new_window_shortcut {
+                    .with_handler(move |app, shortcut, event| {
+                        let current_window_shortcut_str = app
+                            .state::<AppState>()
+                            .app_config
+                            .read()
+                            .unwrap()
+                            .shortcut
+                            .clone();
+                        let current_window_shortcut =
+                            Shortcut::from_str(&current_window_shortcut_str).unwrap();
+
+                        if shortcut == &current_window_shortcut {
                             match event.state() {
                                 ShortcutState::Pressed => {
                                     // get mouse position
@@ -183,43 +362,96 @@ pub fn run() {
                     })
                     .build(),
             )?;
+            // Shortcut from Config
+            app.global_shortcut()
+                .register(Shortcut::from_str(&app_config.shortcut)?)?;
 
-            app.global_shortcut().register(new_window_shortcut)?;
-
-            let settings_i = MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)?;
-            let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&settings_i, &quit_i])?;
-
-            TrayIconBuilder::new()
+            // Init Tray
+            let item = MenuItemBuilder::new("Loading...")
+                .enabled(false)
+                .build(app)?;
+            let menu = MenuBuilder::new(app).item(&item).build()?;
+            TrayIconBuilder::with_id("main_tray")
                 .menu(&menu)
-                .show_menu_on_left_click(true)
                 .icon(app.default_window_icon().unwrap().clone())
-                .on_menu_event(|app, event| match event.id.as_ref() {
-                    "quit" => {
-                        app.exit(0);
+                .on_menu_event(move |app, event| match event.id.as_ref() {
+                    "general" => {
+                        let general_config_path = app
+                            .path()
+                            .app_data_dir()
+                            .unwrap_or_default()
+                            .join("config.json");
+
+                        if let Err(e) = app
+                            .opener()
+                            .open_path(general_config_path.to_string_lossy(), None::<&str>)
+                        {
+                            eprintln!("Error opening {}: {}", general_config_path.display(), e);
+                        }
                     }
-                    "settings" => {
-                        println!("Settings was clicked!")
+                    "manage_extensions" => {
+                        let extensions_path = app
+                            .path()
+                            .app_data_dir()
+                            .unwrap_or_default()
+                            .join("extensions");
+
+                        if let Err(e) = app
+                            .opener()
+                            .open_path(extensions_path.to_string_lossy(), None::<&str>)
+                        {
+                            eprintln!("Error opening {}: {}", extensions_path.display(), e);
+                        }
                     }
-                    _ => {
-                        unreachable!()
+                    "download_extensions" => {
+                        // TODO correct url
+                        let url = "https://github.com/nwrenger/pointy";
+                        if let Err(e) = app.opener().open_url(url, None::<&str>) {
+                            eprintln!("Error opening {}: {}", url, e);
+                        }
                     }
+                    id if id.starts_with("ext_") => {
+                        let extension_key = id.trim_start_matches("ext_").to_string();
+                        if let Err(e) =
+                            toggle_extension(extension_key.clone(), app.state::<AppState>())
+                        {
+                            eprintln!("Error toggeling {}: {}", extension_key, e);
+                        }
+                    }
+                    _ => {}
                 })
                 .build(app)?;
 
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
 
-            // State
-            app.manage(extensions_path);
+            // Init Autostart, also from config
+            app.handle().plugin(tauri_plugin_autostart::init(
+                tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+                None,
+            ))?;
+
+            let autostart_manager = app.autolaunch();
+
+            if app_config.autostart {
+                autostart_manager.enable()?;
+            } else {
+                autostart_manager.disable()?;
+            }
+
+            // Safe state
+            app.manage(AppState::new(config_path, extensions_path, app_config));
 
             Ok(())
         })
         .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
-            activated_extensions,
+            update_extensions,
+            update_config,
+            info_extensions,
             run_extension,
-            read_to_string
+            read_to_string,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
