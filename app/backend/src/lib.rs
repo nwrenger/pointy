@@ -440,10 +440,7 @@ pub fn run() {
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
 
             // Init Autostart, also from config
-            handle.plugin(tauri_plugin_autostart::init(
-                tauri_plugin_autostart::MacosLauncher::LaunchAgent,
-                None,
-            ))?;
+            handle.plugin(tauri_plugin_autostart::Builder::new().build())?;
             let autostart_manager = app.autolaunch();
             if app_config.autostart {
                 autostart_manager.enable()?;

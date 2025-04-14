@@ -14,5 +14,6 @@
 - [ ] Create icon
 - [ ] Maybe: Add UI for the Settings
 - [ ] Only Linux: Make it work, then test hidden window
+- [ ] Only Windows: Currently crashing on startup, make it work
 - [ ] Only macos: Focus back last focused window on the hiding of pointy's selector
 - [x] Add icon mind. hold duration -> no unwanted selections (through a hover outline filling thingy)
