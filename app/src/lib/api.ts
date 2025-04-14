@@ -8,16 +8,8 @@ export interface ExtensionInfo {
 	enabled: boolean;
 }
 
-export async function update_extensions(): Promise<ExtensionInfo[]> {
-	return await invoke('update_extensions');
-}
-
-export async function update_config(): Promise<void> {
-	return await invoke('update_config');
-}
-
-export async function info_extensions(): Promise<ExtensionInfo[]> {
-	return await invoke('info_extensions');
+export async function initial_extensions(): Promise<ExtensionInfo[]> {
+	return await invoke('initial_extensions');
 }
 
 export async function run_extension(extension_name: string): Promise<void> {

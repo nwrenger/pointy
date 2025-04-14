@@ -1,54 +1,26 @@
 <script lang="ts">
 	import { getCurrentWindow, LogicalSize } from '@tauri-apps/api/window';
-	import {
-		run_extension,
-		read_to_string,
-		type ExtensionInfo,
-		update_extensions,
-		update_config
-	} from '$lib/api';
-	import { BaseDirectory, watchImmediate, type WatchEvent } from '@tauri-apps/plugin-fs';
+	import { initial_extensions, run_extension, read_to_string, type ExtensionInfo } from '$lib/api';
+
+	const current_window = getCurrentWindow();
 
 	let items: ExtensionInfo[] = $state([]);
-	let debounceTimeout1: NodeJS.Timeout | null = null;
-
-	async function populateItems(event: WatchEvent | undefined) {
-		if (debounceTimeout1) clearTimeout(debounceTimeout1);
-		debounceTimeout1 = setTimeout(async () => {
-			let all_items = await update_extensions();
-			items = all_items.filter((i) => i.enabled);
-			debounceTimeout1 = null;
-		}, 100);
+	function setItems(allExtensions: ExtensionInfo[]): void {
+		items = allExtensions.filter((extension) => extension.enabled);
 	}
 
-	// Once on start
-	populateItems(undefined);
-
-	// Update items on directory changes
-	watchImmediate('extensions', populateItems, {
-		baseDir: BaseDirectory.AppData,
-		recursive: true
-	});
-
-	let debounceTimeout2: NodeJS.Timeout | null = null;
-
-	async function populateChanges() {
-		if (debounceTimeout2) clearTimeout(debounceTimeout2);
-		debounceTimeout2 = setTimeout(async () => {
-			console.log('Config changes getting applied!');
-			await update_config();
-			debounceTimeout2 = null;
-		}, 100);
+	async function loadInitialItems(): Promise<void> {
+		const extensions = await initial_extensions();
+		setItems(extensions);
 	}
+	loadInitialItems();
 
-	// Update config on directory changes
-	watchImmediate('config.json', populateChanges, {
-		baseDir: BaseDirectory.AppData,
-		recursive: false
+	// Update Items on window event
+	current_window.listen('update-extensions', ({ payload }) => {
+		setItems(payload as ExtensionInfo[]);
 	});
 
 	const buttonSize = 33;
-	const current_window = getCurrentWindow();
 
 	let radius = $derived(items.length * 12);
 	let angleStep = $derived(360 / items.length);

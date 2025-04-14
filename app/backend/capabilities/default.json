@@ -7,10 +7,6 @@
 		"core:default",
 		"core:window:allow-set-size",
 		"global-shortcut:default",
-		"fs:default",
-		"fs:allow-watch",
-		"fs:scope-appdata-recursive",
-		"fs:allow-appdata-read",
 		"opener:default"
 	]
 }
