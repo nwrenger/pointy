@@ -306,11 +306,15 @@ pub fn run() {
             let handle = app.handle().clone();
 
             // Inital App Setup (Paths)
-            let config_path = app.path().app_data_dir()?.join("config.json");
+            let data_path = app.path().app_data_dir()?;
+            if !data_path.exists() {
+                fs::create_dir_all(&data_path)?;
+            }
+            let config_path = data_path.join("config.json");
             if !config_path.exists() {
                 fs::write(&config_path, serde_json::to_string(&AppConfig::default())?)?;
             }
-            let extensions_path = app.path().app_data_dir()?.join("extensions");
+            let extensions_path = data_path.join("extensions");
             if !extensions_path.exists() {
                 fs::create_dir_all(&extensions_path)?;
             }
