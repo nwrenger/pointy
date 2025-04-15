@@ -102,25 +102,32 @@ fn update_extensions(app: &AppHandle) -> tauri::Result<Vec<ExtensionInfo>> {
         extensions.push(check_item);
     }
 
+    if extensions.is_empty() {
+        let empty_check_item = CheckMenuItemBuilder::new("No extensions found")
+            .id("empty_extensions")
+            .checked(false)
+            .enabled(false)
+            .build(app)?;
+        extensions.push(empty_check_item);
+    }
+
     let extensions_refs: Vec<&dyn IsMenuItem<Wry>> = extensions
         .iter()
         .map(|item| item as &dyn IsMenuItem<_>)
         .collect();
 
-    let settings_i = SubmenuBuilder::new(app, "Settings")
-        .id("settings")
-        .text("general", "General")
-        .separator()
+    let extensions_i = SubmenuBuilder::new(app, "Extensions")
+        .id("extensions")
         .items(extensions_refs.as_slice())
         .separator()
-        .text("manage_extensions", "Manage Extensions...")
-        .text("download_extensions", "Download Extensions")
+        .text("manage_extensions", "Manage...")
+        .text("download_extensions", "Download")
         .build()?;
 
     let menu = MenuBuilder::new(app)
         .id("tray_menu")
-        .about(None)
-        .item(&settings_i)
+        .text("config", "Config")
+        .item(&extensions_i)
         .separator()
         .quit()
         .build()?;
@@ -392,51 +399,47 @@ pub fn run() {
             TrayIconBuilder::with_id("main_tray")
                 .menu(&menu)
                 .icon(app.default_window_icon().unwrap().clone())
-                .on_menu_event(move |app, event| match event.id.as_ref() {
-                    "general" => {
-                        let general_config_path = app
-                            .path()
-                            .app_data_dir()
-                            .unwrap_or_default()
-                            .join("config.json");
-
-                        if let Err(e) = app
-                            .opener()
-                            .open_path(general_config_path.to_string_lossy(), None::<&str>)
-                        {
-                            eprintln!("Error opening {}: {}", general_config_path.display(), e);
+                .on_menu_event({
+                    let config_path_copy = config_path.clone();
+                    let extensions_path_copy = extensions_path.clone();
+                    move |app, event| match event.id.as_ref() {
+                        "config" => {
+                            if let Err(e) = app
+                                .opener()
+                                .open_path(config_path_copy.to_string_lossy(), None::<&str>)
+                            {
+                                eprintln!("Error opening {}: {}", config_path_copy.display(), e);
+                            }
                         }
-                    }
-                    "manage_extensions" => {
-                        let extensions_path = app
-                            .path()
-                            .app_data_dir()
-                            .unwrap_or_default()
-                            .join("extensions");
-
-                        if let Err(e) = app
-                            .opener()
-                            .open_path(extensions_path.to_string_lossy(), None::<&str>)
-                        {
-                            eprintln!("Error opening {}: {}", extensions_path.display(), e);
+                        "manage_extensions" => {
+                            if let Err(e) = app
+                                .opener()
+                                .open_path(extensions_path_copy.to_string_lossy(), None::<&str>)
+                            {
+                                eprintln!(
+                                    "Error opening {}: {}",
+                                    extensions_path_copy.display(),
+                                    e
+                                );
+                            }
                         }
-                    }
-                    "download_extensions" => {
-                        // TODO correct url
-                        let url = "https://github.com/nwrenger/pointy";
-                        if let Err(e) = app.opener().open_url(url, None::<&str>) {
-                            eprintln!("Error opening {}: {}", url, e);
+                        "download_extensions" => {
+                            // TODO correct url
+                            let url = "https://github.com/nwrenger/pointy";
+                            if let Err(e) = app.opener().open_url(url, None::<&str>) {
+                                eprintln!("Error opening {}: {}", url, e);
+                            }
                         }
-                    }
-                    id if id.starts_with("ext_") => {
-                        let extension_key = id.trim_start_matches("ext_").to_string();
-                        if let Err(e) =
-                            toggle_extension(extension_key.clone(), app.state::<AppState>())
-                        {
-                            eprintln!("Error toggeling {}: {}", extension_key, e);
+                        id if id.starts_with("ext_") => {
+                            let extension_key = id.trim_start_matches("ext_").to_string();
+                            if let Err(e) =
+                                toggle_extension(extension_key.clone(), app.state::<AppState>())
+                            {
+                                eprintln!("Error toggeling {}: {}", extension_key, e);
+                            }
                         }
+                        _ => {}
                     }
-                    _ => {}
                 })
                 .build(app)?;
 
@@ -447,8 +450,10 @@ pub fn run() {
             handle.plugin(tauri_plugin_autostart::Builder::new().build())?;
             let autostart_manager = app.autolaunch();
             if app_config.autostart {
-                autostart_manager.enable()?;
-            } else {
+                if !autostart_manager.is_enabled()? {
+                    autostart_manager.enable()?;
+                }
+            } else if autostart_manager.is_enabled()? {
                 autostart_manager.disable()?;
             }
 
