@@ -4,7 +4,9 @@ use pointy_api::{
 };
 use qrcode::QrCode;
 
-extension_entry! {
+extension_entry!(main);
+
+fn main() -> Result<(), String> {
     let clipboard_text = clipboard_get_text()?;
 
     let code = QrCode::new(clipboard_text.as_bytes()).map_err(|e| e.to_string())?;

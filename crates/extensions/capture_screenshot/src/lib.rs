@@ -5,7 +5,9 @@ use pointy_api::{
 };
 use xcap::Monitor;
 
-extension_entry! {
+extension_entry!(main);
+
+fn main() -> Result<(), String> {
     let device_state = DeviceState::new();
     let pos = device_state.get_mouse().coords;
     let monitor = Monitor::from_point(pos.0, pos.1).map_err(|e| e.to_string())?;

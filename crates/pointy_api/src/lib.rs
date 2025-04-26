@@ -1,4 +1,5 @@
 // Bundeling useful crates
+pub use arboard;
 pub use device_query;
 pub use image;
 
@@ -8,27 +9,25 @@ use arboard::{Clipboard, ImageData};
 use image::RgbaImage;
 
 /// This macro generates the FFI function `run` which:
-/// - Executes your custom logic (provided as a closure) that returns a `Result<(), String>`.
+/// - Executes your custom logic provided as a function that returns a `Result<(), String>`.
 /// - Converts that result into a `CString` (`*mut c_char`) for return.
-///
+/// ---
 /// Usage:
 /// ```rust
-/// extension_entry! {
-///     // Your custom logic here. For example:
-///     let clipboard_text = clipboard_get_text()?;   // You can call helper functions here.
-///     let text = eval_str(clipboard_text)
-///         .map_err(|e| e.to_string())?
-///         .to_string();
+/// extension_entry!(main);
 ///
-///     clipboard_write_text(text)
+/// fn main() -> Result<(), String> {
+///     let text = clipboard_get_text()?;
+///     let words = text.split_whitespace().count();
+///     clipboard_write_text(words.to_string())
 /// }
 /// ```
 #[macro_export]
 macro_rules! extension_entry {
-    ($($body:tt)*) => {
+    ($func:path) => {
         #[no_mangle]
         pub extern "C" fn run() -> *mut std::os::raw::c_char {
-            let result: Result<(), String> = (|| { $($body)* })();
+            let result: Result<(), String> = $func();
             match result {
                 Ok(()) => std::ffi::CString::new("").unwrap().into_raw(),
                 Err(e) => std::ffi::CString::new(e).unwrap().into_raw(),

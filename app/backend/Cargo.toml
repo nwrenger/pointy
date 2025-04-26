@@ -1,7 +1,7 @@
 [package]
 name = "pointy"
 version = "0.1.0"
-description = "Workflow improvemets by pointer selectable addons."
+description = "The clipboard extension everybody needs."
 authors = ["nils@wrenger.net"]
 edition = "2021"
 

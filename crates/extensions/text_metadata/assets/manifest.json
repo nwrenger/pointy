@@ -1,0 +1,5 @@
+{
+  "name": "Text Metadata",
+  "description": "Counts character, words and lines of a copied text and returns the result to the clipboard.",
+  "icon": "icon.svg"
+}
