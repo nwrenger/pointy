@@ -1,5 +1,6 @@
 {
   "name": "Generate a QrCode",
+  "version": "0.1.0",
   "description": "Generates a qrcode from copied text and saves it to the clipboard.",
-  "icon": "icon.svg"
+  "update_manifest_url": ""
 }

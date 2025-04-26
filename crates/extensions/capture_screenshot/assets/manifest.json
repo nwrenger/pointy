@@ -1,5 +1,6 @@
 {
   "name": "Capture a Screenshot",
+  "version": "0.1.0",
   "description": "Captures a screenshot of the current monitor by mouse position and copies the result to the clipboard.",
-  "icon": "icon.svg"
+  "update_manifest_url": ""
 }

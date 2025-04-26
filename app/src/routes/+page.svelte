@@ -68,8 +68,8 @@
 										{current_option === item.abbreveation
 					? 'outline preset-tonal-success duration-75'
 					: 'preset-tonal-surface duration-0'}"
-				aria-label={item.name}
-				title={item.description}
+				aria-label={item.manifest.name}
+				title={item.manifest.description}
 				onfocus={() => {}}
 				onmouseover={() => mouseouseEnter(item.abbreveation)}
 				onmouseleave={mouseouseLeave}

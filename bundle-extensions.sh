@@ -9,7 +9,7 @@ echo "📦 Bundling all extensions into $BUNDLE_OUTPUT_ROOT..."
 
 case "$OSTYPE" in
   linux-gnu*)    EXT=".so";    OS_NAME="linux" ;;
-  darwin*)       EXT=".dylib"; OS_NAME="mac" ;;
+  darwin*)       EXT=".dylib"; OS_NAME="macos" ;;
   msys*|cygwin*) EXT=".dll";   OS_NAME="windows" ;;
   *) echo "❌ Unsupported OS: $OSTYPE"; exit 1 ;;
 esac
@@ -40,7 +40,7 @@ for dir in "$EXT_DIR_ROOT"/*/; do
   OUTPUT_DIR="../../../$BUNDLE_OUTPUT_ROOT/$EXT_NAME"
   mkdir -p "$OUTPUT_DIR"
 
-  DEST_FILE="${OS_NAME}${EXT}"
+  DEST_FILE="lib${EXT}"
   echo "📁 Copying build output to $DEST_FILE..."
   cp "$ARTIFACT" "$OUTPUT_DIR/$DEST_FILE"
 

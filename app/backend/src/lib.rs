@@ -63,20 +63,41 @@ impl Default for AppConfig {
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 struct ExtensionManifest {
     name: String,
+    version: String,
     description: String,
-    icon: String,
+    update_manifest_url: String,
 }
 
-#[derive(Serialize, Clone)]
+// // For Later, TODO: Extension Updates
+// #[derive(Deserialize)]
+// struct ExtensionUpdate {
+//     version: String,
+//     assets: HashMap<SupportedSystems, Asset>,
+// }
+
+// #[derive(Serialize, Deserialize, Clone, Hash, PartialEq, Eq)]
+// pub enum SupportedSystems {
+//     Windows,
+//     MacOS,
+//     Linux,
+// }
+
+// // Is a tar or zip, TODO: Unzipping
+// #[derive(Serialize, Deserialize, Clone)]
+// struct Asset {
+//     url: String,
+//     checksum: String,
+// }
+
+#[derive(Serialize, Deserialize, Clone)]
 struct ExtensionInfo {
-    pub abbreveation: String,
-    pub name: String,
-    pub description: String,
-    pub icon_path: String,
-    pub enabled: bool,
+    manifest: ExtensionManifest,
+    abbreveation: String,
+    icon_path: PathBuf,
+    enabled: bool,
 }
 
 /// Populates the tray menu and returns the used `Vec<ExtensionInfo>`.
@@ -89,12 +110,12 @@ fn update_extensions(app: &AppHandle) -> tauri::Result<Vec<ExtensionInfo>> {
 
     for ExtensionInfo {
         abbreveation,
-        name,
+        manifest,
         enabled,
         ..
     } in &info
     {
-        let check_item = CheckMenuItemBuilder::new(name)
+        let check_item = CheckMenuItemBuilder::new(&manifest.name)
             .id(format!("ext_{}", abbreveation))
             .checked(*enabled)
             .enabled(true)
@@ -204,17 +225,16 @@ fn info_extensions(app_state: State<'_, AppState>) -> tauri::Result<Vec<Extensio
             let manifest_data = std::fs::read_to_string(&manifest_path)?;
             let manifest: ExtensionManifest = serde_json::from_str(&manifest_data)?;
 
-            let icon_path = extensions_path.join(&path).join(&manifest.icon);
+            let icon_path = extensions_path.join(&path).join("icon.svg");
 
             extensions.push(ExtensionInfo {
+                manifest,
                 abbreveation: path
                     .file_name()
                     .unwrap_or_default()
                     .to_string_lossy()
                     .to_string(),
-                name: manifest.name,
-                description: manifest.description,
-                icon_path: icon_path.to_string_lossy().to_string(),
+                icon_path,
                 enabled: enabled.contains(&PathBuf::from(path.file_name().unwrap_or_default())),
             });
         }
@@ -257,11 +277,11 @@ fn initial_extensions(app: AppHandle) -> Result<Vec<ExtensionInfo>, String> {
 #[tauri::command]
 fn run_extension(extension_name: String, app_state: State<'_, AppState>) -> Result<(), String> {
     #[cfg(target_os = "windows")]
-    let lib_filename = "windows.dll";
+    let lib_filename = "lib.dll";
     #[cfg(target_os = "macos")]
-    let lib_filename = "mac.dylib";
+    let lib_filename = "lib.dylib";
     #[cfg(target_os = "linux")]
-    let lib_filename = "linux.so";
+    let lib_filename = "lib.so";
 
     let extensions_path = app_state
         .extensions_path
@@ -291,7 +311,7 @@ fn run_extension(extension_name: String, app_state: State<'_, AppState>) -> Resu
             .into_string()
             .map_err(|e| format!("Failed to convert C string: {}", e))?;
 
-        // As with the helper in `crate::api`, if the string is empty no error occurred
+        // As with the helper in `pointy_api`, if the string is empty no error occurred
         if result_str.is_empty() {
             Ok(())
         } else {

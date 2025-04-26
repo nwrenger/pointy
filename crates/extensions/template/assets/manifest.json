@@ -1,5 +1,6 @@
 {
   "name": "Empty",
+  "version": "0.1.0",
   "description": "Empty.",
-  "icon": "icon.svg"
+  "update_manifest_url": ""
 }

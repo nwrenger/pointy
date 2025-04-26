@@ -1,5 +1,6 @@
 {
   "name": "Creates a secure Password",
+  "version": "0.1.0",
   "description": "Creates a 12 character long very secure password and copies it to the clipboard.",
-  "icon": "icon.svg"
+  "update_manifest_url": ""
 }

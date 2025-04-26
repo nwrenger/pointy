@@ -51,7 +51,7 @@ for dir in "$EXT_DIR_ROOT"/*/; do
         continue
       fi
 
-      DEST_FILE="${OS_NAME}${EXT}"
+      DEST_FILE="lib${EXT}"
       echo "📁 Copying build output to $DEST_FILE..."
       cp "$ARTIFACT" "$OUTPUT_DIR/$DEST_FILE"
   done
