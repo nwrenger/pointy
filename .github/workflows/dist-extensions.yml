@@ -32,14 +32,12 @@ jobs:
 
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      - name: Install Rust & add target
-        uses: actions-rs/toolchain@v1
+      - name: install Rust stable
+        uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: stable
-          target: ${{ matrix.target }}
-          override: true
+          targets: ${{ matrix.target }}
 
       - name: Build all extensions
         run: |
@@ -72,7 +70,7 @@ jobs:
           done
 
       - name: Upload zipped artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: extensions-${{ matrix.platform }}
           path: dist/**/${{ matrix.platform }}/*.zip
@@ -83,7 +81,7 @@ jobs:
 
     steps:
       - name: Download all extension artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           path: dist
 
@@ -110,7 +108,7 @@ jobs:
           done
 
       - name: Upload update_manifests
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: extension-update-manifests
           path: dist/*/update_manifest.json
