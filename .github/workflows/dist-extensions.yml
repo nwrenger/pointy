@@ -6,6 +6,9 @@ on:
     paths:
       - "crates/extensions/**"
 
+env:
+  CDN_BASE_URL: "https://my.cdn"  # ← replace with your real CDN root
+
 jobs:
   build:
     strategy:
@@ -29,12 +32,16 @@ jobs:
             platform: windows-x86_64
 
     runs-on: ${{ matrix.runner }}
+    env:
+      TARGET:    ${{ matrix.target }}
+      PLATFORM:  ${{ matrix.platform }}
+      LIB_EXT:   ${{ matrix.lib_ext }}
 
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Install dependencies (Ubuntu only)
+      - name: Install Linux deps (Ubuntu only)
         if: matrix.platform == 'linux-x86_64'
         run: |
           sudo apt-get update
@@ -43,128 +50,126 @@ jobs:
             libsoup2.4-dev libwebkit2gtk-4.1-dev libappindicator3-dev \
             librsvg2-dev patchelf libdbus-1-dev pkg-config
 
-      - name: Install dependencies (Windows only)
-        if: matrix.platform == 'windows-x86_64'
-        shell: pwsh
-        run: choco install zip -y
-
-      - name: Install Rust stable and add target
+      - name: Install Rust + target
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
 
-      - name: Rust cache
-        uses: swatinem/rust-cache@v2
-        with:
-          workspaces: "./ -> target"
-
-      - name: Build all extensions
+      - name: Build extensions
         shell: bash
         run: |
           for ext in crates/extensions/*; do
             [ -d "$ext" ] || continue
             pushd "$ext"
-            cargo build --release --target ${{ matrix.target }}
+            cargo build --release --target "$TARGET"
             popd
           done
 
-      - name: Package each extension for ${{ matrix.platform }}
+      - name: Prepare dist
+        run: mkdir -p dist
+
+      - name: Install zip on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: choco install zip -y
+
+      - name: Package extensions
         shell: bash
         run: |
-          mkdir -p dist
           for ext in crates/extensions/*; do
             [ -d "$ext" ] || continue
             name=$(basename "$ext")
-            out="dist/$name/${{ matrix.platform }}"
+            out="dist/$name/$PLATFORM"
             mkdir -p "$out"
 
-            # select & rename library to match lib_filename
-            if [[ "${{ matrix.platform }}" == "windows-x86_64" ]]; then
-              src="target/${{ matrix.target }}/release/${name}.${{ matrix.lib_ext }}"
-              lib_filename="lib.${{ matrix.lib_ext }}"
+            if [[ "$PLATFORM" == "windows-x86_64" ]]; then
+              src="target/$TARGET/release/${name}.${LIB_EXT}"
+              lib_filename="lib.${LIB_EXT}"
             else
-              src="target/${{ matrix.target }}/release/lib${name}.${{ matrix.lib_ext }}"
-              case "${{ matrix.platform }}" in
+              src="target/$TARGET/release/lib${name}.${LIB_EXT}"
+              case "$PLATFORM" in
                 darwin-*) lib_filename="lib.dylib" ;;
-                linux-*) lib_filename="lib.so" ;;
+                linux-*) lib_filename="lib.so"    ;;
               esac
             fi
 
-            cp "$src" "$out/$lib_filename"
-            cp "$ext/assets/icon.svg" "$out/"
+            cp "$src"            "$out/$lib_filename"
+            cp "$ext/assets/icon.svg"    "$out/"
             cp "$ext/assets/manifest.json" "$out/"
 
             pushd "$out"
-            zip -r "${name}_${{ matrix.platform }}.zip" ./*
+            zip -r "${name}_${PLATFORM}.zip" ./*
             popd
           done
 
-      - name: Upload zipped artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: extensions-${{ matrix.platform }}
-          path: dist/*/${{ matrix.platform }}/*.zip
-
-  generate-manifests:
+  prepare-release:
     needs: build
     runs-on: ubuntu-latest
 
     steps:
-      - name: Download all ZIP artifacts
+      - name: Checkout repo (for version lookups & cdn path)
+        uses: actions/checkout@v4
+
+      - name: Download build artifacts
         uses: actions/download-artifact@v4
         with:
           path: dist
 
-      - name: Generate each extension’s update_manifest.json
+      - name: Generate update_manifest.json for each extension
         shell: bash
         run: |
           set -euo pipefail
 
-          # gather unique extension names from all zips
+          # find all extension names by zip filename prefix
           mapfile -t names < <(
             find dist -type f -name "*.zip" \
-            | xargs -n1 basename \
-            | sed -E 's/^(.+)_.+\.zip$/\1/' \
-            | sort -u
+              | xargs -n1 basename \
+              | sed -E 's/^(.+)_.+\.zip$/\1/' \
+              | sort -u
           )
 
           for name in "${names[@]}"; do
-            # version lives in the source assets folder
             version=$(jq -r .version crates/extensions/"$name"/assets/manifest.json)
-
-            # start JSON
             manifest="{\"version\":\"$version\",\"assets\":{"
             first=true
 
-            # iterate over every zip belonging to this extension
             while IFS= read -r zip; do
               fname=$(basename "$zip")
-              # extract platform (the part after the first underscore, before .zip)
               plat="${fname#${name}_}"
               plat="${plat%.zip}"
               checksum=$(sha256sum "$zip" | cut -d' ' -f1)
-              url="https://my.cdn/$name/${fname}"
+              url="${CDN_BASE_URL}/${name}/${fname}"
 
-              if $first; then
-                first=false
-              else
-                manifest+=","
-              fi
-
+              if $first; then first=false; else manifest+=","; fi
               manifest+="\"$plat\":{\"url\":\"$url\",\"checksum\":\"$checksum\"}"
             done < <(find dist -type f -name "${name}_*.zip")
 
             manifest+="}}"
-
-            # write out
-            outdir="dist/$name"
-            mkdir -p "$outdir"
-            echo "$manifest" > "$outdir/update_manifest.json"
-            echo "→ $outdir/update_manifest.json"
+            mkdir -p "dist/$name"
+            echo "$manifest" > "dist/$name/update_manifest.json"
+            echo "→ dist/$name/update_manifest.json"
           done
 
-      - name: Upload update_manifests
-        uses: actions/upload-artifact@v4
-        with:
-          name: extension-update-manifests
-          path: dist/*/update_manifest.json
+  publish:
+    needs: prepare-release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Install GitHub CLI
+        uses: cli/cli-action@v2
+
+      - name: Authenticate GH CLI
+        run: gh auth setup-git --hostname github.com
+
+      - name: Upload all artifacts to latest release
+        shell: bash
+        run: |
+          # get the latest release tag
+          TAG=$(gh release view --json tagName -q .tagName)
+
+          # Upload every zip + manifest.json
+          find dist -type f \( -name "*.zip" -o -name "update_manifest.json" \) | \
+          while read -r file; do
+            echo "Uploading $file → release $TAG"
+            gh release upload "$TAG" "$file" --clobber
+          done
