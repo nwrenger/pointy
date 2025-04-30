@@ -107,6 +107,12 @@ jobs:
             popd
           done
 
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: extensions-dist
+          path: dist
+
   prepare-release:
     needs: build
     runs-on: ubuntu-latest
@@ -118,6 +124,7 @@ jobs:
       - name: Download build artifacts
         uses: actions/download-artifact@v4
         with:
+          name: extensions-dist
           path: dist
 
       - name: Generate update_manifest.json for each extension
@@ -155,6 +162,12 @@ jobs:
             echo "→ dist/$name/update_manifest.json"
           done
 
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-packages
+          path: dist
+
   publish:
     needs: prepare-release
     runs-on: ubuntu-latest
@@ -163,9 +176,10 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Download all dist artifacts
+      - name: Download release artifacts
         uses: actions/download-artifact@v4
         with:
+          name: release-packages
           path: dist
 
       - name: Upload assets to latest release
