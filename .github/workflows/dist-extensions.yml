@@ -110,7 +110,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Download all extension artifacts
+      - name: Download all ZIP artifacts
         uses: actions/download-artifact@v4
         with:
           path: dist
@@ -118,24 +118,49 @@ jobs:
       - name: Generate each extension’s update_manifest.json
         shell: bash
         run: |
-          for extdir in dist/*; do
-            [ -d "$extdir" ] || continue
-            name=$(basename "$extdir")
+          set -euo pipefail
+
+          # gather unique extension names from all zips
+          mapfile -t names < <(
+            find dist -type f -name "*.zip" \
+            | xargs -n1 basename \
+            | sed -E 's/^(.+)_.+\.zip$/\1/' \
+            | sort -u
+          )
+
+          for name in "${names[@]}"; do
+            # version lives in the source assets folder
             version=$(jq -r .version crates/extensions/"$name"/assets/manifest.json)
+
+            # start JSON
             manifest="{\"version\":\"$version\",\"assets\":{"
             first=true
 
-            for zipfile in "$extdir"/*.zip; do
-              plat=$(basename "$zipfile" | sed -E "s/^${name}_(.+)\.zip$/\1/")
-              checksum=$(sha256sum "$zipfile" | cut -d' ' -f1)
-              url="https://my.cdn/$name/$(basename "$zipfile")"
-              if $first; then first=false; else manifest+=","; fi
+            # iterate over every zip belonging to this extension
+            while IFS= read -r zip; do
+              fname=$(basename "$zip")
+              # extract platform (the part after the first underscore, before .zip)
+              plat="${fname#${name}_}"
+              plat="${plat%.zip}"
+              checksum=$(sha256sum "$zip" | cut -d' ' -f1)
+              url="https://my.cdn/$name/${fname}"
+
+              if $first; then
+                first=false
+              else
+                manifest+=","
+              fi
+
               manifest+="\"$plat\":{\"url\":\"$url\",\"checksum\":\"$checksum\"}"
-            done
+            done < <(find dist -type f -name "${name}_*.zip")
 
             manifest+="}}"
-            echo "$manifest" > "$extdir/update_manifest.json"
-            echo "→ $extdir/update_manifest.json"
+
+            # write out
+            outdir="dist/$name"
+            mkdir -p "$outdir"
+            echo "$manifest" > "$outdir/update_manifest.json"
+            echo "→ $outdir/update_manifest.json"
           done
 
       - name: Upload update_manifests
