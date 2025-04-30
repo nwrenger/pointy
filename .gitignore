@@ -2,6 +2,9 @@
 Cargo.lock
 app/bun.lock
 
+# Keys
+keys
+
 # Build Files
 
 ## Rust

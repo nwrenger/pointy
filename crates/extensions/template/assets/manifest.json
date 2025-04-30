@@ -1,5 +1,6 @@
 {
-  "name": "Empty",
+  "name": "template",
+  "display_name": "Empty",
   "version": "0.1.0",
   "description": "Empty.",
   "update_manifest_url": ""

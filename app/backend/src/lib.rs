@@ -4,7 +4,11 @@ use std::{
     io::BufWriter,
     path::PathBuf,
     str::FromStr,
-    sync::RwLock,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        RwLock,
+    },
+    thread,
     time::Duration,
 };
 
@@ -20,10 +24,16 @@ use tauri::{
 use tauri_plugin_autostart::ManagerExt;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 use tauri_plugin_opener::OpenerExt;
+use tauri_plugin_updater::UpdaterExt;
+
+pub const PKG_NAME: &str = env!("CARGO_PKG_NAME");
+pub const PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 struct AppState {
+    updating: AtomicBool,
     config_path: PathBuf,
     extensions_path: PathBuf,
+    updating_extensions: AtomicBool,
     app_config: RwLock<AppConfig>,
     // Hold the watchers "alive"
     _extensions_watcher: RecommendedWatcher,
@@ -39,8 +49,10 @@ impl AppState {
         _config_watcher: RecommendedWatcher,
     ) -> Self {
         Self {
+            updating: AtomicBool::new(false),
             config_path,
             extensions_path,
+            updating_extensions: AtomicBool::new(false),
             app_config: RwLock::new(app_config),
             _extensions_watcher,
             _config_watcher,
@@ -66,6 +78,7 @@ impl Default for AppConfig {
 #[derive(Serialize, Deserialize, Clone)]
 struct ExtensionManifest {
     name: String,
+    display_name: String,
     version: String,
     description: String,
     update_manifest_url: String,
@@ -75,14 +88,20 @@ struct ExtensionManifest {
 // #[derive(Deserialize)]
 // struct ExtensionUpdate {
 //     version: String,
-//     assets: HashMap<SupportedSystems, Asset>,
+//     assets: HashMap<(System, Arch), Asset>,
 // }
 
-// #[derive(Serialize, Deserialize, Clone, Hash, PartialEq, Eq)]
-// pub enum SupportedSystems {
+// #[derive(Serialize, Deserialize, Debug, Clone, Hash, PartialEq, Eq)]
+// pub enum System {
 //     Windows,
 //     MacOS,
 //     Linux,
+// }
+
+// #[derive(Serialize, Deserialize, Debug, Clone, Hash, PartialEq, Eq)]
+// pub enum Arch {
+//     Arm,
+//     Amd,
 // }
 
 // // Is a tar or zip, TODO: Unzipping
@@ -95,31 +114,45 @@ struct ExtensionManifest {
 #[derive(Serialize, Deserialize, Clone)]
 struct ExtensionInfo {
     manifest: ExtensionManifest,
-    abbreveation: String,
     icon_path: PathBuf,
     enabled: bool,
 }
 
 /// Populates the tray menu and returns the used `Vec<ExtensionInfo>`.
-fn update_extensions(app: &AppHandle) -> tauri::Result<Vec<ExtensionInfo>> {
+fn update_system_tray(
+    app: &AppHandle,
+    updating: Option<bool>,
+    updating_extensions: Option<bool>,
+) -> tauri::Result<Vec<ExtensionInfo>> {
     let app_state = app.state::<AppState>();
+
+    if let Some(updating) = updating {
+        app_state.updating.store(updating, Ordering::Relaxed);
+    }
+
+    if let Some(updating_extensions) = updating_extensions {
+        app_state
+            .updating_extensions
+            .store(updating_extensions, Ordering::Relaxed);
+    }
+
+    let updating = app_state.updating.load(Ordering::Relaxed);
+    let updating_extensions = app_state.updating_extensions.load(Ordering::Relaxed);
     let info =
         info_extensions(app_state).map_err(|e| tauri::Error::AssetNotFound(e.to_string()))?;
 
     let mut extensions = vec![];
 
     for ExtensionInfo {
-        abbreveation,
-        manifest,
-        enabled,
-        ..
+        manifest, enabled, ..
     } in &info
     {
-        let check_item = CheckMenuItemBuilder::new(&manifest.name)
-            .id(format!("ext_{}", abbreveation))
-            .checked(*enabled)
-            .enabled(true)
-            .build(app)?;
+        let check_item =
+            CheckMenuItemBuilder::new(format!("{} {}", &manifest.display_name, &manifest.version))
+                .id(format!("ext_{}", &manifest.name))
+                .checked(*enabled)
+                .enabled(true)
+                .build(app)?;
         extensions.push(check_item);
     }
 
@@ -137,16 +170,46 @@ fn update_extensions(app: &AppHandle) -> tauri::Result<Vec<ExtensionInfo>> {
         .map(|item| item as &dyn IsMenuItem<_>)
         .collect();
 
+    let updating_extensions = if updating_extensions {
+        MenuItemBuilder::new("Updating All...")
+            .id("check_update_extensions")
+            .enabled(false)
+            .build(app)?
+    } else {
+        MenuItemBuilder::new("Update All")
+            .id("check_update_extensions")
+            .build(app)?
+    };
+
     let extensions_i = SubmenuBuilder::new(app, "Extensions")
         .id("extensions")
         .items(extensions_refs.as_slice())
         .separator()
-        .text("manage_extensions", "Manage...")
+        .text("manage_extensions", "Manage")
+        .item(&updating_extensions)
         .text("download_extensions", "Download")
         .build()?;
 
+    let version = MenuItemBuilder::new(format!("{PKG_NAME} {PKG_VERSION}"))
+        .enabled(false)
+        .build(app)?;
+
+    let updating = if updating {
+        MenuItemBuilder::new("Updating...")
+            .id("check_update")
+            .enabled(false)
+            .build(app)?
+    } else {
+        MenuItemBuilder::new("Update")
+            .id("check_update")
+            .build(app)?
+    };
+
     let menu = MenuBuilder::new(app)
         .id("tray_menu")
+        .item(&version)
+        .item(&updating)
+        .separator()
         .text("config", "Config")
         .item(&extensions_i)
         .separator()
@@ -229,11 +292,6 @@ fn info_extensions(app_state: State<'_, AppState>) -> tauri::Result<Vec<Extensio
 
             extensions.push(ExtensionInfo {
                 manifest,
-                abbreveation: path
-                    .file_name()
-                    .unwrap_or_default()
-                    .to_string_lossy()
-                    .to_string(),
                 icon_path,
                 enabled: enabled.contains(&PathBuf::from(path.file_name().unwrap_or_default())),
             });
@@ -262,10 +320,40 @@ fn toggle_extension(extension: String, app_state: State<'_, AppState>) -> tauri:
     Ok(())
 }
 
+/// Updates the whole app
+async fn update_app(app: &AppHandle) -> tauri_plugin_updater::Result<()> {
+    // ignore errors
+    let _ = update_system_tray(&app, Some(true), None);
+
+    if let Some(update) = app.updater()?.check().await? {
+        let mut downloaded = 0;
+
+        update
+            .download_and_install(
+                |chunk_length, content_length| {
+                    downloaded += chunk_length;
+                    println!("Downloaded {downloaded} from {content_length:?}");
+                },
+                || {
+                    println!("Download finished!");
+                },
+            )
+            .await?;
+
+        // ignore errors
+        let _ = update_system_tray(app, Some(false), None);
+
+        println!("Update installed!");
+        app.restart();
+    }
+
+    Ok(())
+}
+
 /// Get the inital extensions, please run once. After that use the event `update-extensions`.
 #[tauri::command]
 fn initial_extensions(app: AppHandle) -> Result<Vec<ExtensionInfo>, String> {
-    update_extensions(&app).map_err(|e| e.to_string())
+    update_system_tray(&app, None, None).map_err(|e| e.to_string())
 }
 
 /// Runs a specified extension. It loads the appropriate dynamic library
@@ -423,6 +511,12 @@ pub fn run() {
                     let config_path_copy = config_path.clone();
                     let extensions_path_copy = extensions_path.clone();
                     move |app, event| match event.id.as_ref() {
+                        "check_update" => {
+                            let app_clone = app.clone();
+                            tauri::async_runtime::spawn(async move {
+                                update_app(&app_clone).await.unwrap();
+                            });
+                        }
                         "config" => {
                             if let Err(e) = app
                                 .opener()
@@ -443,8 +537,45 @@ pub fn run() {
                                 );
                             }
                         }
+                        "check_update_extensions" => {
+                            if let Ok(extensions) = update_system_tray(&app, None, Some(true)) {
+                                let mut handles = vec![];
+
+                                for extension in extensions {
+                                    let app_clone = app.clone();
+                                    let h = tauri::async_runtime::spawn(async move {
+                                        let app_state: State<'_, AppState> = app_clone.state();
+                                        println!(
+                                            "Updating {} {}",
+                                            extension.manifest.name,
+                                            app_state.extensions_path.display()
+                                        );
+                                        // TODO: do your real async work here, e.g.
+                                        // let manifest = fetch_manifest(&ext).await?;
+                                        // download_and_apply(&ext, manifest).await?;
+
+                                        // For demonstration we just delay:
+                                        thread::sleep(std::time::Duration::from_secs(2));
+
+                                        println!("DONE!");
+
+                                        // You could optionally report per‐extension progress back into state…
+                                    });
+                                    handles.push(h);
+                                }
+
+                                let app_clone = app.clone();
+                                tauri::async_runtime::spawn(async move {
+                                    for handle in handles {
+                                        let _ = handle.await;
+                                    }
+
+                                    let _ = update_system_tray(&app_clone, None, Some(false));
+                                });
+                            }
+                        }
                         "download_extensions" => {
-                            // TODO correct url
+                            // TODO: correct url
                             let url = "https://github.com/nwrenger/pointy";
                             if let Err(e) = app.opener().open_url(url, None::<&str>) {
                                 eprintln!("Error opening {}: {}", url, e);
@@ -502,7 +633,7 @@ pub fn run() {
                 move |e| {
                     #[allow(clippy::redundant_pattern_matching)]
                     if let Ok(_) = e {
-                        if let Ok(extensions) = update_extensions(&handle) {
+                        if let Ok(extensions) = update_system_tray(&handle, None, None) {
                             let main_window = handle.get_webview_window("main").unwrap();
                             main_window.emit("update-extensions", extensions).unwrap();
                         }
@@ -523,6 +654,7 @@ pub fn run() {
 
             Ok(())
         })
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             initial_extensions,

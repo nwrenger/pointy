@@ -16,6 +16,7 @@
 - [x] Add AppState for AppConfig an AppData Path
 - [x] Add initial app config by reading config to app setup and State
 - [ ] Create icon
+- [x] Add updater
 - [ ] Only Linux: Make it work, then test hidden window
 - [ ] Only macos: Focus back last focused window on the hiding of pointy's selector
 - [x] Only Windows: Currently crashing on startup, make it work
