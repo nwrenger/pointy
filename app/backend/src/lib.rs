@@ -1,21 +1,24 @@
+pub mod config;
+pub mod extensions;
+pub mod update;
+
 use std::{
     ffi::CString,
-    fs::{self, File},
-    io::BufWriter,
+    fs,
     path::PathBuf,
     str::FromStr,
     sync::{
         atomic::{AtomicBool, Ordering},
         RwLock,
     },
-    thread,
     time::Duration,
 };
 
+use config::{load_app_config, update_config, AppConfig};
+use extensions::{info_extensions, toggle_extension, ExtensionInfo};
 use libloading::{Library, Symbol};
 use notify::{Config, RecommendedWatcher, RecursiveMode, Watcher};
 use pointy_api::device_query::{DeviceQuery, DeviceState};
-use serde::{Deserialize, Serialize};
 use tauri::{
     menu::{CheckMenuItemBuilder, IsMenuItem, MenuBuilder, MenuItemBuilder, SubmenuBuilder},
     tray::TrayIconBuilder,
@@ -24,24 +27,24 @@ use tauri::{
 use tauri_plugin_autostart::ManagerExt;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 use tauri_plugin_opener::OpenerExt;
-use tauri_plugin_updater::UpdaterExt;
+use update::{update_app, update_extensions};
 
 pub const PKG_NAME: &str = env!("CARGO_PKG_NAME");
 pub const PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-struct AppState {
-    updating: AtomicBool,
-    config_path: PathBuf,
-    extensions_path: PathBuf,
-    updating_extensions: AtomicBool,
-    app_config: RwLock<AppConfig>,
+pub struct AppState {
+    pub updating_app: AtomicBool,
+    pub config_path: PathBuf,
+    pub extensions_path: PathBuf,
+    pub updating_extensions: AtomicBool,
+    pub app_config: RwLock<AppConfig>,
     // Hold the watchers "alive"
     _extensions_watcher: RecommendedWatcher,
     _config_watcher: RecommendedWatcher,
 }
 
 impl AppState {
-    fn new(
+    pub fn new(
         config_path: PathBuf,
         extensions_path: PathBuf,
         app_config: AppConfig,
@@ -49,7 +52,7 @@ impl AppState {
         _config_watcher: RecommendedWatcher,
     ) -> Self {
         Self {
-            updating: AtomicBool::new(false),
+            updating_app: AtomicBool::new(false),
             config_path,
             extensions_path,
             updating_extensions: AtomicBool::new(false),
@@ -60,99 +63,32 @@ impl AppState {
     }
 }
 
-#[derive(Serialize, Deserialize)]
-struct AppConfig {
-    autostart: bool,
-    shortcut: String,
+/// Converts everything to a tauri error
+pub fn to_tauri_error<E: std::fmt::Display>(e: E) -> tauri::Error {
+    tauri::Error::from(std::io::Error::new(
+        std::io::ErrorKind::Other,
+        e.to_string(),
+    ))
 }
 
-impl Default for AppConfig {
-    fn default() -> Self {
-        Self {
-            autostart: false,
-            shortcut: String::from("CommandOrControl+Shift+Space"),
-        }
-    }
-}
-
-#[derive(Serialize, Deserialize, Clone)]
-struct ExtensionManifest {
-    name: String,
-    display_name: String,
-    version: String,
-    description: String,
-    update_manifest_url: String,
-}
-
-// // For Later, TODO: Extension Updates
-// #[derive(Deserialize)]
-// struct ExtensionUpdate {
-//     version: String,
-//     assets: HashMap<(System, Arch), Asset>,
-// }
-
-// #[derive(Serialize, Deserialize, Debug, Clone, Hash, PartialEq, Eq)]
-// pub enum System {
-//     Windows,
-//     MacOS,
-//     Linux,
-// }
-
-// #[derive(Serialize, Deserialize, Debug, Clone, Hash, PartialEq, Eq)]
-// pub enum Arch {
-//     Arm,
-//     Amd,
-// }
-
-// // Is a tar or zip, TODO: Unzipping
-// #[derive(Serialize, Deserialize, Clone)]
-// struct Asset {
-//     url: String,
-//     checksum: String,
-// }
-
-#[derive(Serialize, Deserialize, Clone)]
-struct ExtensionInfo {
-    manifest: ExtensionManifest,
-    icon_path: PathBuf,
-    enabled: bool,
-}
-
-/// Populates the tray menu and returns the used `Vec<ExtensionInfo>`.
-fn update_system_tray(
+/// Generalized builder for the tray menu.
+fn build_system_tray(
     app: &AppHandle,
-    updating: Option<bool>,
-    updating_extensions: Option<bool>,
-) -> tauri::Result<Vec<ExtensionInfo>> {
-    let app_state = app.state::<AppState>();
-
-    if let Some(updating) = updating {
-        app_state.updating.store(updating, Ordering::Relaxed);
-    }
-
-    if let Some(updating_extensions) = updating_extensions {
-        app_state
-            .updating_extensions
-            .store(updating_extensions, Ordering::Relaxed);
-    }
-
-    let updating = app_state.updating.load(Ordering::Relaxed);
-    let updating_extensions = app_state.updating_extensions.load(Ordering::Relaxed);
-    let info =
-        info_extensions(app_state).map_err(|e| tauri::Error::AssetNotFound(e.to_string()))?;
-
+    info: &[ExtensionInfo],
+    updating_app: bool,
+    updating_extensions: bool,
+) -> tauri::Result<()> {
     let mut extensions = vec![];
 
     for ExtensionInfo {
         manifest, enabled, ..
-    } in &info
+    } in info
     {
-        let check_item =
-            CheckMenuItemBuilder::new(format!("{} {}", &manifest.display_name, &manifest.version))
-                .id(format!("ext_{}", &manifest.name))
-                .checked(*enabled)
-                .enabled(true)
-                .build(app)?;
+        let check_item = CheckMenuItemBuilder::new(&manifest.display_name)
+            .id(format!("ext_{}", &manifest.name))
+            .checked(*enabled)
+            .enabled(true)
+            .build(app)?;
         extensions.push(check_item);
     }
 
@@ -170,16 +106,15 @@ fn update_system_tray(
         .map(|item| item as &dyn IsMenuItem<_>)
         .collect();
 
-    let updating_extensions = if updating_extensions {
-        MenuItemBuilder::new("Updating All...")
-            .id("check_update_extensions")
-            .enabled(false)
-            .build(app)?
+    let ext_update_label = if updating_extensions {
+        "Updating all..."
     } else {
-        MenuItemBuilder::new("Update All")
-            .id("check_update_extensions")
-            .build(app)?
+        "Check all for Updates"
     };
+    let updating_extensions = MenuItemBuilder::new(ext_update_label)
+        .id("check_update_extensions")
+        .enabled(!updating_extensions)
+        .build(app)?;
 
     let extensions_i = SubmenuBuilder::new(app, "Extensions")
         .id("extensions")
@@ -194,21 +129,20 @@ fn update_system_tray(
         .enabled(false)
         .build(app)?;
 
-    let updating = if updating {
-        MenuItemBuilder::new("Updating...")
-            .id("check_update")
-            .enabled(false)
-            .build(app)?
+    let update_label = if updating_app {
+        "Updating..."
     } else {
-        MenuItemBuilder::new("Update")
-            .id("check_update")
-            .build(app)?
+        "Check for Updates"
     };
+    let updating_app_i = MenuItemBuilder::new(update_label)
+        .id("check_update_app")
+        .enabled(!updating_app)
+        .build(app)?;
 
     let menu = MenuBuilder::new(app)
         .id("tray_menu")
         .item(&version)
-        .item(&updating)
+        .item(&updating_app_i)
         .separator()
         .text("config", "Config")
         .item(&extensions_i)
@@ -220,134 +154,35 @@ fn update_system_tray(
         tray.set_menu(Some(menu))?;
     }
 
-    Ok(info)
+    Ok(())
 }
 
-/// Should be called when the config changed.
-fn update_config(app: &AppHandle) -> tauri::Result<()> {
-    // Helper closure to convert errors to a tauri::Error.
-    fn to_tauri_err(e: impl std::fmt::Display) -> tauri::Error {
-        tauri::Error::from(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            e.to_string(),
-        ))
-    }
-
+/// Populates the tray menu and returns the used `Vec<ExtensionInfo>`.
+fn update_system_tray(
+    app: &AppHandle,
+    updating: Option<bool>,
+    updating_extensions: Option<bool>,
+) -> tauri::Result<Vec<ExtensionInfo>> {
     let app_state = app.state::<AppState>();
 
-    let old_app_config = app_state.app_config.read().map_err(to_tauri_err)?;
-    let app_config_data = fs::read_to_string(&app_state.config_path)?;
-    let new_app_config: AppConfig = serde_json::from_str(&app_config_data)?;
-
-    // Remove old shortcut
-    let old_shortcut = Shortcut::from_str(&old_app_config.shortcut).map_err(to_tauri_err)?;
-    app.global_shortcut()
-        .unregister(old_shortcut)
-        .map_err(to_tauri_err)?;
-
-    drop(old_app_config);
-
-    // Add new shortcut
-    let new_shortcut = Shortcut::from_str(&new_app_config.shortcut).map_err(to_tauri_err)?;
-    app.global_shortcut()
-        .register(new_shortcut)
-        .map_err(to_tauri_err)?;
-
-    // Configure autostart
-    let autostart_manager = app.autolaunch();
-    if new_app_config.autostart {
-        autostart_manager.enable().map_err(to_tauri_err)?;
-    } else {
-        autostart_manager.disable().map_err(to_tauri_err)?;
+    if let Some(updating) = updating {
+        app_state.updating_app.store(updating, Ordering::Relaxed);
     }
 
-    let mut w = app_state.app_config.write().map_err(to_tauri_err)?;
-    *w = new_app_config;
-
-    Ok(())
-}
-
-/// Reads the "extensions/*" folder and returns a list of all extensions with their info.
-fn info_extensions(app_state: State<'_, AppState>) -> tauri::Result<Vec<ExtensionInfo>> {
-    let extensions_path = app_state.extensions_path.clone();
-
-    let enabled_path = extensions_path.join("enabled.json");
-    let data = std::fs::read_to_string(&enabled_path)?;
-    let enabled: Vec<PathBuf> = serde_json::from_str(&data)?;
-
-    let dirs = extensions_path.read_dir()?;
-
-    let mut extensions = Vec::new();
-    let mut paths: Vec<PathBuf> = dirs.filter_map(|e| Some(e.ok()?.path())).collect();
-    paths.sort();
-
-    for path in paths {
-        if path.is_dir() {
-            let manifest_path = extensions_path.join(&path).join("manifest.json");
-
-            let manifest_data = std::fs::read_to_string(&manifest_path)?;
-            let manifest: ExtensionManifest = serde_json::from_str(&manifest_data)?;
-
-            let icon_path = extensions_path.join(&path).join("icon.svg");
-
-            extensions.push(ExtensionInfo {
-                manifest,
-                icon_path,
-                enabled: enabled.contains(&PathBuf::from(path.file_name().unwrap_or_default())),
-            });
-        }
+    if let Some(updating_extensions) = updating_extensions {
+        app_state
+            .updating_extensions
+            .store(updating_extensions, Ordering::Relaxed);
     }
 
-    Ok(extensions)
-}
+    let updating_app = app_state.updating_app.load(Ordering::Relaxed);
+    let updating_extensions = app_state.updating_extensions.load(Ordering::Relaxed);
+    let info =
+        info_extensions(app_state).map_err(|e| tauri::Error::AssetNotFound(e.to_string()))?;
 
-/// Toggles an `extension`
-fn toggle_extension(extension: String, app_state: State<'_, AppState>) -> tauri::Result<()> {
-    let enabled_path = app_state.extensions_path.join("enabled.json");
-    let enabled_data = std::fs::read_to_string(&enabled_path)?;
-    let mut enabled: Vec<String> = serde_json::from_str(&enabled_data)?;
+    build_system_tray(app, &info, updating_app, updating_extensions)?;
 
-    if enabled.contains(&extension) {
-        enabled.retain(|item| item != &extension);
-    } else {
-        enabled.push(extension);
-    }
-
-    let file = File::create(enabled_path)?;
-    let writer = BufWriter::new(file);
-    serde_json::to_writer(writer, &enabled)?;
-
-    Ok(())
-}
-
-/// Updates the whole app
-async fn update_app(app: &AppHandle) -> tauri_plugin_updater::Result<()> {
-    // ignore errors
-    let _ = update_system_tray(&app, Some(true), None);
-
-    if let Some(update) = app.updater()?.check().await? {
-        let mut downloaded = 0;
-
-        update
-            .download_and_install(
-                |chunk_length, content_length| {
-                    downloaded += chunk_length;
-                    println!("Downloaded {downloaded} from {content_length:?}");
-                },
-                || {
-                    println!("Download finished!");
-                },
-            )
-            .await?;
-
-        // ignore errors
-        let _ = update_system_tray(app, Some(false), None);
-
-        println!("Update installed!");
-        app.restart();
-    }
-
-    Ok(())
+    Ok(info)
 }
 
 /// Get the inital extensions, please run once. After that use the event `update-extensions`.
@@ -439,8 +274,7 @@ pub fn run() {
             }
 
             // Initial App Config
-            let app_config_data = fs::read_to_string(&config_path)?;
-            let app_config: AppConfig = serde_json::from_str(&app_config_data)?;
+            let app_config = load_app_config(&config_path)?;
 
             // Window Size
             let main_window = handle.get_webview_window("main").unwrap();
@@ -514,7 +348,9 @@ pub fn run() {
                         "check_update" => {
                             let app_clone = app.clone();
                             tauri::async_runtime::spawn(async move {
-                                update_app(&app_clone).await.unwrap();
+                                if let Err(e) = update_app(&app_clone).await {
+                                    eprintln!("Error updating: {}", e);
+                                }
                             });
                         }
                         "config" => {
@@ -538,40 +374,8 @@ pub fn run() {
                             }
                         }
                         "check_update_extensions" => {
-                            if let Ok(extensions) = update_system_tray(&app, None, Some(true)) {
-                                let mut handles = vec![];
-
-                                for extension in extensions {
-                                    let app_clone = app.clone();
-                                    let h = tauri::async_runtime::spawn(async move {
-                                        let app_state: State<'_, AppState> = app_clone.state();
-                                        println!(
-                                            "Updating {} {}",
-                                            extension.manifest.name,
-                                            app_state.extensions_path.display()
-                                        );
-                                        // TODO: do your real async work here, e.g.
-                                        // let manifest = fetch_manifest(&ext).await?;
-                                        // download_and_apply(&ext, manifest).await?;
-
-                                        // For demonstration we just delay:
-                                        thread::sleep(std::time::Duration::from_secs(2));
-
-                                        println!("DONE!");
-
-                                        // You could optionally report per‐extension progress back into state…
-                                    });
-                                    handles.push(h);
-                                }
-
-                                let app_clone = app.clone();
-                                tauri::async_runtime::spawn(async move {
-                                    for handle in handles {
-                                        let _ = handle.await;
-                                    }
-
-                                    let _ = update_system_tray(&app_clone, None, Some(false));
-                                });
+                            if let Err(e) = update_extensions(app) {
+                                eprintln!("Error updating extensions: {}", e);
                             }
                         }
                         "download_extensions" => {

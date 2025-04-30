@@ -2,6 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 
 export interface ExtensionManifest {
 	name: string;
+	display_name: string;
 	version: string;
 	description: string;
 	update_manifest_url: string;
@@ -9,7 +10,6 @@ export interface ExtensionManifest {
 
 export interface ExtensionInfo {
 	manifest: ExtensionManifest;
-	abbreveation: string;
 	icon_path: string;
 	enabled: boolean;
 }

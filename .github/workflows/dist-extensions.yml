@@ -1,0 +1,116 @@
+name: Build & Package Extensions
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "crates/extensions/**"
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            runner: macos-12
+            lib_ext: dylib
+            platform: darwin-aarch64
+          - target: x86_64-apple-darwin
+            runner: macos-12
+            lib_ext: dylib
+            platform: darwin-x86_64
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-latest
+            lib_ext: so
+            platform: linux-x86_64
+          - target: x86_64-pc-windows-gnu
+            runner: windows-latest
+            lib_ext: dll
+            platform: windows-x86_64
+
+    runs-on: ${{ matrix.runner }}
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Install Rust & add target
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          target: ${{ matrix.target }}
+          override: true
+
+      - name: Build all extensions
+        run: |
+          for ext in crates/extensions/*; do
+            [ -d "$ext" ] || continue
+            pushd "$ext"
+            cargo build --release --target ${{ matrix.target }}
+            popd
+          done
+
+      - name: Package each extension for ${{ matrix.platform }}
+        run: |
+          mkdir -p dist
+          for ext in crates/extensions/*; do
+            [ -d "$ext" ] || continue
+            name=$(basename "$ext")
+            out="dist/$name/${{ matrix.platform }}"
+            mkdir -p "$out"
+            # copy binary
+            cp \
+              target/${{ matrix.target }}/release/lib"${name}".${{ matrix.lib_ext }} \
+              "$out/"
+            # copy assets
+            cp "$ext/assets/icon.svg" "$out/"
+            cp "$ext/assets/manifest.json" "$out/"
+            # zip up
+            pushd "$out"
+            zip -r "${name}_${{ matrix.platform }}.zip" ./*
+            popd
+          done
+
+      - name: Upload zipped artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: extensions-${{ matrix.platform }}
+          path: dist/**/${{ matrix.platform }}/*.zip
+
+  generate-manifests:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download all extension artifacts
+        uses: actions/download-artifact@v3
+        with:
+          path: dist
+
+      - name: Generate each extension’s update_manifest.json
+        run: |
+          for extdir in dist/*; do
+            name=$(basename "$extdir")
+            # read version from the extension’s manifest.json
+            version=$(jq -r .version crates/extensions/"$name"/assets/manifest.json)
+            manifest="{\"version\":\"$version\",\"assets\":{"
+            first=true
+            for platdir in "$extdir"/*; do
+              plat=$(basename "$platdir")
+              zipfile=$(ls "$platdir"/*.zip)
+              checksum=$(sha256sum "$zipfile" | cut -d' ' -f1)
+              # replace this URL with wherever you host these zips
+              url="https://my.cdn/$name/$plat/$(basename "$zipfile")"
+              if $first; then first=false; else manifest+=","; fi
+              manifest+="\"$plat\":{\"url\":\"$url\",\"checksum\":\"$checksum\"}"
+            done
+            manifest+="}}"
+            echo "$manifest" > "$extdir/update_manifest.json"
+            echo "→ $name/update_manifest.json"
+          done
+
+      - name: Upload update_manifests
+        uses: actions/upload-artifact@v3
+        with:
+          name: extension-update-manifests
+          path: dist/*/update_manifest.json

@@ -65,13 +65,13 @@
 			{@const angle = angleStep * i - 90}
 			<button
 				class="absolute btn-icon cursor-pointer transition-all focus:outline-none
-										{current_option === item.abbreveation
+										{current_option === item.manifest.name
 					? 'outline preset-tonal-success duration-75'
 					: 'preset-tonal-surface duration-0'}"
 				aria-label={item.manifest.name}
 				title={item.manifest.description}
 				onfocus={() => {}}
-				onmouseover={() => mouseouseEnter(item.abbreveation)}
+				onmouseover={() => mouseouseEnter(item.manifest.name)}
 				onmouseleave={mouseouseLeave}
 				style={`
 					top: 50%;
