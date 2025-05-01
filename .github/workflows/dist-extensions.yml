@@ -7,7 +7,7 @@ on:
       - "crates/extensions/**"
 
 env:
-  CDN_BASE_URL: "https://github.com/nwrenger/pointy/releases/latest/download"
+  BASE_URL: "https://github.com/nwrenger/pointy/releases/latest/download"
 
 jobs:
   build:
@@ -173,7 +173,7 @@ jobs:
               plat="${plat%.zip}"
 
               checksum=$(sha256sum "$zip" | cut -d' ' -f1)
-              url="${CDN_BASE_URL}/${fname}"
+              url="${BASE_URL}/${fname}"
 
               if [ "$first" = true ]; then
                 first=false
