@@ -75,31 +75,43 @@ pub fn to_tauri_error<E: std::fmt::Display>(e: E) -> tauri::Error {
 /// Generalized builder for the tray menu.
 fn build_system_tray(
     app: &AppHandle,
-    info: &[ExtensionInfo],
+    info: &Result<Vec<ExtensionInfo>, String>,
     updating_app: bool,
     updating_extensions: bool,
 ) -> tauri::Result<()> {
     let mut extensions = vec![];
 
-    for ExtensionInfo {
-        manifest, enabled, ..
-    } in info
-    {
-        let check_item = CheckMenuItemBuilder::new(&manifest.display_name)
-            .id(format!("ext_{}", &manifest.name))
-            .checked(*enabled)
-            .enabled(true)
-            .build(app)?;
-        extensions.push(check_item);
-    }
+    match info {
+        Ok(info) => {
+            for ExtensionInfo {
+                manifest, enabled, ..
+            } in info
+            {
+                let check_item = CheckMenuItemBuilder::new(&manifest.display_name)
+                    .id(format!("ext_{}", &manifest.name))
+                    .checked(*enabled)
+                    .enabled(true)
+                    .build(app)?;
+                extensions.push(check_item);
+            }
 
-    if extensions.is_empty() {
-        let empty_check_item = CheckMenuItemBuilder::new("No extensions found")
-            .id("empty_extensions")
-            .checked(false)
-            .enabled(false)
-            .build(app)?;
-        extensions.push(empty_check_item);
+            if extensions.is_empty() {
+                let empty_check_item = CheckMenuItemBuilder::new("No extensions found")
+                    .id("empty_extensions")
+                    .checked(false)
+                    .enabled(false)
+                    .build(app)?;
+                extensions.push(empty_check_item);
+            }
+        }
+        Err(e) => {
+            let error_item = CheckMenuItemBuilder::new(format!("Error: {e}"))
+                .id("error_extensions")
+                .checked(false)
+                .enabled(false)
+                .build(app)?;
+            extensions.push(error_item);
+        }
     }
 
     let extensions_refs: Vec<&dyn IsMenuItem<Wry>> = extensions
@@ -178,12 +190,11 @@ fn update_system_tray(
 
     let updating_app = app_state.updating_app.load(Ordering::Relaxed);
     let updating_extensions = app_state.updating_extensions.load(Ordering::Relaxed);
-    let info =
-        info_extensions(app_state).map_err(|e| tauri::Error::AssetNotFound(e.to_string()))?;
+    let info = info_extensions(app_state).map_err(|e| e.to_string());
 
     build_system_tray(app, &info, updating_app, updating_extensions)?;
 
-    Ok(info)
+    Ok(info.unwrap_or_default())
 }
 
 /// Get the inital extensions, please run once. After that use the event `update-extensions`.
