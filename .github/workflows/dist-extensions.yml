@@ -84,7 +84,7 @@ jobs:
           for ext in crates/extensions/*; do
             [ -d "$ext" ] || continue
             name=$(basename "$ext")
-            out="$PLATFORM/$name"
+            out="dist/$PLATFORM/$name"
             mkdir -p "$out"
 
             if [[ "$PLATFORM" == "windows-x86_64" ]]; then
@@ -148,8 +148,8 @@ jobs:
             done < <(find dist -type f -name "${name}_*.zip")
 
             manifest+="}}"
-            echo "$manifest" > "$ext-update_manifest.json"
-            echo "→ $ext-update_manifest.json"
+            echo "$manifest" > "dist/$ext-update_manifest.json"
+            echo "→ dist/$ext-update_manifest.json"
           done
 
       - name: Upload release artifacts
