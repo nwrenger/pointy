@@ -7,7 +7,7 @@ on:
       - "crates/extensions/**"
 
 env:
-  CDN_BASE_URL: "https://my.cdn" # ← replace with your real CDN root
+  CDN_BASE_URL: "https://github.com/nwrenger/pointy/releases"
 
 jobs:
   build:
@@ -84,7 +84,7 @@ jobs:
           for ext in crates/extensions/*; do
             [ -d "$ext" ] || continue
             name=$(basename "$ext")
-            out="dist/$name/$PLATFORM"
+            out="$PLATFORM/$name"
             mkdir -p "$out"
 
             if [[ "$PLATFORM" == "windows-x86_64" ]]; then
@@ -131,16 +131,8 @@ jobs:
         run: |
           set -euo pipefail
 
-          # find all extension names by zip filename prefix
-          mapfile -t names < <(
-            find dist -type f -name "*.zip" \
-              | xargs -n1 basename \
-              | sed -E 's/^(.+)_.+\.zip$/\1/' \
-              | sort -u
-          )
-
-          for name in "${names[@]}"; do
-            version=$(jq -r .version crates/extensions/"$name"/assets/manifest.json)
+          for ext in crates/extensions/*; do
+            version=$(jq -r .version crates/extensions/"$ext"/assets/manifest.json)
             manifest="{\"version\":\"$version\",\"assets\":{"
             first=true
 
@@ -156,9 +148,8 @@ jobs:
             done < <(find dist -type f -name "${name}_*.zip")
 
             manifest+="}}"
-            mkdir -p "dist/$name"
-            echo "$manifest" > "dist/$name/update_manifest.json"
-            echo "→ dist/$name/update_manifest.json"
+            echo "$manifest" > "$ext-update_manifest.json"
+            echo "→ $ext-update_manifest.json"
           done
 
       - name: Upload release artifacts
