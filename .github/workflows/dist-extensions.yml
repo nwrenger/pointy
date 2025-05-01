@@ -217,4 +217,4 @@ jobs:
         run: |
           tag=$(gh api repos/${{ github.repository }}/releases/latest --jq .tag_name)
           echo "Uploading to release $tag…"
-          gh release upload "$tag" dist/*.zip dist/*.json --clobber
+          gh release upload "$tag" dist/* --clobber
