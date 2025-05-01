@@ -81,30 +81,44 @@ jobs:
       - name: Package extensions
         shell: bash
         run: |
+          #!/usr/bin/env bash
+          set -euo pipefail
+
+          root_dir="$(pwd)"
+          dist_dir="$root_dir/dist"
+
           for ext in crates/extensions/*; do
             [ -d "$ext" ] || continue
             name=$(basename "$ext")
-            out="dist/$PLATFORM/$name"
-            mkdir -p "$out"
 
+            # figure out the built lib path and how to name it inside the zip
             if [[ "$PLATFORM" == "windows-x86_64" ]]; then
-              src="target/$TARGET/release/${name}.${LIB_EXT}"
+              src="$root_dir/target/$TARGET/release/${name}.${LIB_EXT}"
               lib_filename="lib.${LIB_EXT}"
             else
-              src="target/$TARGET/release/lib${name}.${LIB_EXT}"
+              src="$root_dir/target/$TARGET/release/lib${name}.${LIB_EXT}"
               case "$PLATFORM" in
                 darwin-*) lib_filename="lib.dylib" ;;
                 linux-*) lib_filename="lib.so"    ;;
               esac
             fi
 
-            cp "$src"            "$out/$lib_filename"
-            cp "$ext/assets/icon.svg"    "$out/"
-            cp "$ext/assets/manifest.json" "$out/"
+            if [ ! -f "$src" ]; then
+              echo "⚠️  Skipping $name for $PLATFORM — file not found: $src" >&2
+              continue
+            fi
 
-            pushd "$out"
-            zip -r "${name}_${PLATFORM}.zip" ./*
-            popd
+            staging=$(mktemp -d)
+            cp "$src" "$staging/$lib_filename"
+            cp "$ext/assets/icon.svg"    "$staging/"
+            cp "$ext/assets/manifest.json" "$staging/"
+
+            pushd "$staging" > /dev/null
+              zip -r "$dist_dir/${name}_${PLATFORM}.zip" ./*
+            popd > /dev/null
+
+            rm -rf "$staging"
+            echo "→ Created: $dist_dir/${name}_${PLATFORM}.zip"
           done
 
       - name: Upload build artifacts
@@ -129,27 +143,43 @@ jobs:
       - name: Generate update_manifest.json for each extension
         shell: bash
         run: |
+          #!/usr/bin/env bash
           set -euo pipefail
 
           for ext in crates/extensions/*; do
-            version=$(jq -r .version crates/extensions/"$ext"/assets/manifest.json)
+            [ -d "$ext" ] || continue
+            name=$(basename "$ext")
+            version=$(jq -r .version "$ext/assets/manifest.json")
+
             manifest="{\"version\":\"$version\",\"assets\":{"
             first=true
 
-            while IFS= read -r zip; do
+            # now glob for dist/{name}_{platform}.zip
+            for zip in dist/"${name}"_*.zip; do
+              [ -f "$zip" ] || continue
               fname=$(basename "$zip")
+
+              # extract platform from filename
               plat="${fname#${name}_}"
               plat="${plat%.zip}"
-              checksum=$(sha256sum "$zip" | cut -d' ' -f1)
-              url="${CDN_BASE_URL}/${name}/${fname}"
 
-              if $first; then first=false; else manifest+=","; fi
+              checksum=$(sha256sum "$zip" | cut -d' ' -f1)
+              url="${CDN_BASE_URL}/${fname}"
+
+              if [ "$first" = true ]; then
+                first=false
+              else
+                manifest+=","
+              fi
+
               manifest+="\"$plat\":{\"url\":\"$url\",\"checksum\":\"$checksum\"}"
-            done < <(find dist -type f -name "${name}_*.zip")
+            done
 
             manifest+="}}"
-            echo "$manifest" > "dist/$ext-update_manifest.json"
-            echo "→ dist/$ext-update_manifest.json"
+
+            # emit per-extension JSON
+            echo "$manifest" > "dist/${name}-update_manifest.json"
+            echo "→ dist/${name}-update_manifest.json"
           done
 
       - name: Upload release artifacts
