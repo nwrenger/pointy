@@ -124,6 +124,7 @@ jobs:
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
+          name: extensions-dist-${{ matrix.platform }}
           path: dist
 
   prepare-release:
@@ -144,6 +145,15 @@ jobs:
         run: |
           #!/usr/bin/env bash
           set -euo pipefail
+
+          for srcdir in dist/extensions-dist-*; do
+            [ -d "$srcdir" ] || continue
+            echo "→ Moving contents of $srcdir into dist/"
+            for file in "$srcdir"/*; do
+              mv "$file" dist/
+            done
+            rm -rf "$srcdir"
+          done
 
           for ext in crates/extensions/*; do
             [ -d "$ext" ] || continue
