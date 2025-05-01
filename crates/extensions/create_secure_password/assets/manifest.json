@@ -3,5 +3,5 @@
   "display_name": "Creates a secure Password",
   "version": "0.1.0",
   "description": "Creates a 12 character long very secure password and copies it to the clipboard.",
-  "update_manifest_url": ""
+  "manifest_url": "https://github.com/nwrenger/pointy/releases/latest/download/create_secure_password-latest.json"
 }

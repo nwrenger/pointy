@@ -17,7 +17,7 @@ pub struct ExtensionManifest {
     pub display_name: String,
     pub version: Version,
     pub description: String,
-    pub update_manifest_url: String,
+    pub manifest_url: String,
 }
 
 #[derive(Deserialize)]

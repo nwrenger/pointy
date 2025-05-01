@@ -3,5 +3,5 @@
   "display_name": "Empty",
   "version": "0.1.0",
   "description": "Empty.",
-  "update_manifest_url": ""
+  "manifest_url": "https://github.com/nwrenger/pointy/releases/latest/download/template-latest.json"
 }

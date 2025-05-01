@@ -48,7 +48,7 @@ pub fn update_extensions(app: &AppHandle) -> Result<(), String> {
             let key = current_platform_key();
 
             // fetch the remote update manifest
-            let resp = match reqwest::get(&extension.manifest.update_manifest_url).await {
+            let resp = match reqwest::get(&extension.manifest.manifest_url).await {
                 Ok(r) if r.status().is_success() => r,
                 Ok(r) => {
                     eprintln!(

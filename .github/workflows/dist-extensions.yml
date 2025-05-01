@@ -187,8 +187,8 @@ jobs:
             manifest+="}}"
 
             # emit per-extension JSON
-            echo "$manifest" > "dist/${name}-update_manifest.json"
-            echo "→ dist/${name}-update_manifest.json"
+            echo "$manifest" > "dist/${name}-latest.json"
+            echo "→ dist/${name}-latest.json"
           done
 
       - name: Upload release artifacts
