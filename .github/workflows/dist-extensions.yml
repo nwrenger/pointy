@@ -7,7 +7,7 @@ on:
       - "crates/extensions/**"
 
 env:
-  CDN_BASE_URL: "https://github.com/nwrenger/pointy/releases"
+  CDN_BASE_URL: "https://github.com/nwrenger/pointy/releases/latest/download"
 
 jobs:
   build:
