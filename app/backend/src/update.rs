@@ -11,8 +11,8 @@ use tracing::{error, info, warn};
 
 /// Updates the whole app
 pub async fn update_app(app: &AppHandle) -> tauri_plugin_updater::Result<()> {
+    let _ = update_system_tray(app, Some(true), None);
     if let Some(update) = app.updater()?.check().await? {
-        let _ = update_system_tray(app, Some(true), None);
         let mut downloaded = 0;
 
         update
@@ -35,6 +35,7 @@ pub async fn update_app(app: &AppHandle) -> tauri_plugin_updater::Result<()> {
         let _ = update_system_tray(app, Some(false), None);
         app.restart();
     } else {
+        let _ = update_system_tray(app, Some(false), None);
         info!("app is up-to-date");
     }
 

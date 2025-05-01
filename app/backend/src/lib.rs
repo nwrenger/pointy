@@ -122,7 +122,7 @@ fn build_system_tray(
     let ext_update_label = if updating_extensions {
         "Updating all..."
     } else {
-        "Check all for Updates"
+        "Check all for updates"
     };
     let updating_extensions = MenuItemBuilder::new(ext_update_label)
         .id("check_update_extensions")
@@ -145,7 +145,7 @@ fn build_system_tray(
     let update_label = if updating_app {
         "Updating..."
     } else {
-        "Check for Updates"
+        "Check for updates"
     };
     let updating_app_i = MenuItemBuilder::new(update_label)
         .id("check_update_app")
