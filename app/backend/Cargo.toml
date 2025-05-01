@@ -29,3 +29,5 @@ sha2 = "0.10.9"
 hex = "0.4.3"
 zip = "2.6.1"
 semver = { version = "1.0.26", features = ["serde"] }
+tracing = "0.1.41"
+tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }

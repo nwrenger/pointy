@@ -7,6 +7,8 @@ use zip::ZipArchive;
 
 use crate::{extensions::ExtensionUpdate, update_system_tray, AppState};
 
+use tracing::{error, info, warn};
+
 /// Updates the whole app
 pub async fn update_app(app: &AppHandle) -> tauri_plugin_updater::Result<()> {
     if let Some(update) = app.updater()?.check().await? {
@@ -17,18 +19,23 @@ pub async fn update_app(app: &AppHandle) -> tauri_plugin_updater::Result<()> {
             .download_and_install(
                 |chunk_length, content_length| {
                     downloaded += chunk_length;
-                    println!("Downloaded {downloaded} from {content_length:?}");
+                    info!(
+                        downloaded_bytes = downloaded,
+                        total_bytes = ?content_length,
+                        "download progress"
+                    );
                 },
                 || {
-                    println!("Download finished");
+                    info!("download finished");
                 },
             )
             .await?;
 
-        println!("Update installed!");
-
+        info!("update installed");
         let _ = update_system_tray(app, Some(false), None);
         app.restart();
+    } else {
+        info!("app is up-to-date");
     }
 
     Ok(())
@@ -37,7 +44,10 @@ pub async fn update_app(app: &AppHandle) -> tauri_plugin_updater::Result<()> {
 /// Updates all extensions
 pub fn update_extensions(app: &AppHandle) -> Result<(), String> {
     // show updating
-    let extensions = update_system_tray(app, None, Some(true)).map_err(|e| e.to_string())?;
+    let extensions = update_system_tray(app, None, Some(true)).map_err(|e| {
+        error!(%e, "failed to update system tray for extensions");
+        e.to_string()
+    })?;
 
     let mut handles = Vec::with_capacity(extensions.len());
     for extension in extensions {
@@ -51,24 +61,25 @@ pub fn update_extensions(app: &AppHandle) -> Result<(), String> {
             let resp = match reqwest::get(&extension.manifest.manifest_url).await {
                 Ok(r) if r.status().is_success() => r,
                 Ok(r) => {
-                    eprintln!(
-                        "HTTP {} fetching manifest for {}",
-                        r.status(),
-                        &extension.manifest.name
+                    error!(
+                        status = %r.status(),
+                        name = %extension.manifest.name,
+                        "HTTP error fetching manifest"
                     );
                     return;
                 }
                 Err(e) => {
-                    eprintln!("Request error for {}: {}", extension.manifest.name, e);
+                    error!(name = %extension.manifest.name, %e, "request error fetching manifest");
                     return;
                 }
             };
             let update: ExtensionUpdate = match resp.json().await {
                 Ok(u) => u,
                 Err(e) => {
-                    eprintln!(
-                        "Failed to parse manifest for {}: {}",
-                        extension.manifest.name, e
+                    error!(
+                        name = %extension.manifest.name,
+                        %e,
+                        "failed to parse manifest"
                     );
                     return;
                 }
@@ -76,9 +87,11 @@ pub fn update_extensions(app: &AppHandle) -> Result<(), String> {
 
             // check for version
             if update.version <= extension.manifest.version {
-                println!(
-                    "{} is up-to-date ({} ≤ {})",
-                    extension.manifest.name, update.version, extension.manifest.version
+                info!(
+                    name = %extension.manifest.name,
+                    new = %update.version,
+                    old = %extension.manifest.version,
+                    "extension is up-to-date"
                 );
                 return;
             }
@@ -87,9 +100,10 @@ pub fn update_extensions(app: &AppHandle) -> Result<(), String> {
             let asset = match update.assets.get(&key) {
                 Some(a) => a.clone(),
                 None => {
-                    eprintln!(
-                        "No asset for {} on this platform {}",
-                        extension.manifest.name, key
+                    warn!(
+                        name = %extension.manifest.name,
+                        platform = %key,
+                        "no asset for this platform"
                     );
                     return;
                 }
@@ -99,25 +113,22 @@ pub fn update_extensions(app: &AppHandle) -> Result<(), String> {
             let resp2 = match reqwest::get(&asset.url).await {
                 Ok(r) if r.status().is_success() => r,
                 Ok(r) => {
-                    eprintln!(
-                        "HTTP {} downloading asset for {}",
-                        r.status(),
-                        extension.manifest.name
+                    error!(
+                        status = %r.status(),
+                        name = %extension.manifest.name,
+                        "HTTP error downloading asset"
                     );
                     return;
                 }
                 Err(e) => {
-                    eprintln!(
-                        "Error downloading asset for {}: {}",
-                        extension.manifest.name, e
-                    );
+                    error!(name = %extension.manifest.name, %e, "error downloading asset");
                     return;
                 }
             };
             let bytes = match resp2.bytes().await {
                 Ok(b) => b.to_vec(),
                 Err(e) => {
-                    eprintln!("Error reading bytes for {}: {}", extension.manifest.name, e);
+                    error!(name = %extension.manifest.name, %e, "error reading bytes");
                     return;
                 }
             };
@@ -127,14 +138,19 @@ pub fn update_extensions(app: &AppHandle) -> Result<(), String> {
             hasher.update(&bytes);
             let sum = hex::encode(hasher.finalize());
             if sum != asset.checksum {
-                eprintln!("Checksum mismatch for {}", extension.manifest.name);
+                error!(
+                    name = %extension.manifest.name,
+                    expected = %asset.checksum,
+                    actual = %sum,
+                    "checksum mismatch"
+                );
                 return;
             }
 
             // install into a clean folder
             let ext_dir = state.extensions_path.join(&extension.manifest.name);
             let temp_zip = std::env::temp_dir().join(format!("{}.zip", extension.manifest.name));
-            let install_result = || -> std::io::Result<()> {
+            let install_result = (|| -> std::io::Result<()> {
                 // wipe old
                 if ext_dir.exists() {
                     fs::remove_dir_all(&ext_dir)?;
@@ -152,12 +168,11 @@ pub fn update_extensions(app: &AppHandle) -> Result<(), String> {
                 // cleanup
                 fs::remove_file(&temp_zip)?;
                 Ok(())
-            }();
+            })();
 
-            if let Err(e) = install_result {
-                eprintln!("Failed to unpack {}: {}", extension.manifest.name, e);
-            } else {
-                println!("Installed update to {}!", extension.manifest.name);
+            match install_result {
+                Ok(()) => info!(name = %extension.manifest.name, "installed extension update"),
+                Err(e) => error!(name = %extension.manifest.name, %e, "failed to unpack extension"),
             }
         });
 
@@ -178,5 +193,11 @@ pub fn update_extensions(app: &AppHandle) -> Result<(), String> {
 
 /// Returns the current platform
 pub fn current_platform_key() -> String {
-    format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH)
+    let raw_os = std::env::consts::OS;
+    let os = match raw_os {
+        "macos" => "darwin",
+        other_os => other_os,
+    };
+    let arch = std::env::consts::ARCH;
+    format!("{}-{}", os, arch)
 }

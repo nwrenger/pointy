@@ -27,6 +27,7 @@ use tauri::{
 use tauri_plugin_autostart::ManagerExt;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 use tauri_plugin_opener::OpenerExt;
+use tracing::{error, info};
 use update::{update_app, update_extensions};
 
 pub const PKG_NAME: &str = env!("CARGO_PKG_NAME");
@@ -253,6 +254,8 @@ fn read_to_string(path: PathBuf) -> Result<String, String> {
 pub fn run() {
     tauri::Builder::default()
         .setup(|app| {
+            info!("application setup starting");
+
             let handle = app.handle().clone();
 
             // Inital App Setup (Paths)
@@ -345,11 +348,11 @@ pub fn run() {
                     let config_path_copy = config_path.clone();
                     let extensions_path_copy = extensions_path.clone();
                     move |app, event| match event.id.as_ref() {
-                        "check_update" => {
+                        "check_update_app" => {
                             let app_clone = app.clone();
                             tauri::async_runtime::spawn(async move {
                                 if let Err(e) = update_app(&app_clone).await {
-                                    eprintln!("Error updating: {}", e);
+                                    error!("on updating: {}", e);
                                 }
                             });
                         }
@@ -358,7 +361,7 @@ pub fn run() {
                                 .opener()
                                 .open_path(config_path_copy.to_string_lossy(), None::<&str>)
                             {
-                                eprintln!("Error opening {}: {}", config_path_copy.display(), e);
+                                error!("on opening {}: {}", config_path_copy.display(), e);
                             }
                         }
                         "manage_extensions" => {
@@ -366,23 +369,19 @@ pub fn run() {
                                 .opener()
                                 .open_path(extensions_path_copy.to_string_lossy(), None::<&str>)
                             {
-                                eprintln!(
-                                    "Error opening {}: {}",
-                                    extensions_path_copy.display(),
-                                    e
-                                );
+                                error!("on opening {}: {}", extensions_path_copy.display(), e);
                             }
                         }
                         "check_update_extensions" => {
                             if let Err(e) = update_extensions(app) {
-                                eprintln!("Error updating extensions: {}", e);
+                                error!("on updating extensions: {}", e);
                             }
                         }
                         "download_extensions" => {
                             // TODO: correct url
                             let url = "https://github.com/nwrenger/pointy";
                             if let Err(e) = app.opener().open_url(url, None::<&str>) {
-                                eprintln!("Error opening {}: {}", url, e);
+                                error!("on opening {}: {}", url, e);
                             }
                         }
                         id if id.starts_with("ext_") => {
@@ -390,7 +389,7 @@ pub fn run() {
                             if let Err(e) =
                                 toggle_extension(extension_key.clone(), app.state::<AppState>())
                             {
-                                eprintln!("Error toggeling {}: {}", extension_key, e);
+                                error!("on toggeling {}: {}", extension_key, e);
                             }
                         }
                         _ => {}
@@ -455,6 +454,8 @@ pub fn run() {
                 extensions_watcher,
                 config_watcher,
             ));
+
+            info!("application is setup");
 
             Ok(())
         })
