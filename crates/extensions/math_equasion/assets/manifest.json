@@ -3,5 +3,5 @@
   "display_name": "Math Equasion Evaluator",
   "version": "0.1.0",
   "description": "Evaluates a math equasion and copies the result to the clipboard.",
-  "manifest_url": "https://github.com/nwrenger/pointy/releases/latest/download/math_equasion-latest.json"
+  "latest_url": "https://github.com/nwrenger/pointy/releases/latest/download/math_equasion-latest.json"
 }

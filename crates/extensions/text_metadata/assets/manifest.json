@@ -3,5 +3,5 @@
   "display_name": "Text Metadata",
   "version": "0.1.0",
   "description": "Counts character, words and lines of a copied text and returns the result to the clipboard.",
-  "manifest_url": "https://github.com/nwrenger/pointy/releases/latest/download/text_metadata-latest.json"
+  "latest_url": "https://github.com/nwrenger/pointy/releases/latest/download/text_metadata-latest.json"
 }

@@ -5,7 +5,7 @@ export interface ExtensionManifest {
 	display_name: string;
 	version: string;
 	description: string;
-	manifest_url: string;
+	latest_url: string;
 }
 
 export interface ExtensionInfo {

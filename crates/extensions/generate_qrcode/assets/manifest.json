@@ -3,5 +3,5 @@
   "display_name": "Generate a QrCode",
   "version": "0.1.0",
   "description": "Generates a qrcode from copied text and saves it to the clipboard.",
-  "manifest_url": "https://github.com/nwrenger/pointy/releases/latest/download/generate_qrcode-latest.json"
+  "latest_url": "https://github.com/nwrenger/pointy/releases/latest/download/generate_qrcode-latest.json"
 }

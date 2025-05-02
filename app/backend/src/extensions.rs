@@ -17,11 +17,11 @@ pub struct ExtensionManifest {
     pub display_name: String,
     pub version: Version,
     pub description: String,
-    pub manifest_url: String,
+    pub latest_url: String,
 }
 
 #[derive(Deserialize)]
-pub struct ExtensionUpdate {
+pub struct ExtensionLatest {
     pub version: Version,
     pub assets: HashMap<String, Asset>,
 }

@@ -433,8 +433,9 @@ pub fn run() {
                     move |e| {
                         #[allow(clippy::redundant_pattern_matching)]
                         if let Ok(_) = e {
-                            // ignore errors
-                            let _ = update_config(&handle_copy);
+                            if let Err(e) = update_config(&handle_copy) {
+                                error!("on watching config: {}", e);
+                            }
                         }
                     }
                 },
@@ -447,9 +448,14 @@ pub fn run() {
                 move |e| {
                     #[allow(clippy::redundant_pattern_matching)]
                     if let Ok(_) = e {
-                        if let Ok(extensions) = update_system_tray(&handle, None, None) {
-                            let main_window = handle.get_webview_window("main").unwrap();
-                            main_window.emit("update-extensions", extensions).unwrap();
+                        match update_system_tray(&handle, None, None) {
+                            Ok(extensions) => {
+                                let main_window = handle.get_webview_window("main").unwrap();
+                                main_window.emit("update-extensions", extensions).unwrap();
+                            }
+                            Err(e) => {
+                                error!("on watching extensions: {}", e);
+                            }
                         }
                     }
                 },

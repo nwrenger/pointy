@@ -5,7 +5,7 @@ use tauri::{AppHandle, Manager, State};
 use tauri_plugin_updater::UpdaterExt;
 use zip::ZipArchive;
 
-use crate::{extensions::ExtensionUpdate, update_system_tray, AppState};
+use crate::{extensions::ExtensionLatest, update_system_tray, AppState};
 
 use tracing::{error, info, warn};
 
@@ -59,28 +59,28 @@ pub fn update_extensions(app: &AppHandle) -> Result<(), String> {
             let key = current_platform_key();
 
             // fetch the remote update manifest
-            let resp = match reqwest::get(&extension.manifest.manifest_url).await {
+            let resp = match reqwest::get(&extension.manifest.latest_url).await {
                 Ok(r) if r.status().is_success() => r,
                 Ok(r) => {
                     error!(
                         status = %r.status(),
                         name = %extension.manifest.name,
-                        "HTTP error fetching manifest"
+                        "HTTP error fetching latest file"
                     );
                     return;
                 }
                 Err(e) => {
-                    error!(name = %extension.manifest.name, %e, "request error fetching manifest");
+                    error!(name = %extension.manifest.name, %e, "request error fetching latest file");
                     return;
                 }
             };
-            let update: ExtensionUpdate = match resp.json().await {
+            let update: ExtensionLatest = match resp.json().await {
                 Ok(u) => u,
                 Err(e) => {
                     error!(
                         name = %extension.manifest.name,
                         %e,
-                        "failed to parse manifest"
+                        "failed to parse latest file"
                     );
                     return;
                 }

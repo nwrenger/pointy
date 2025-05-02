@@ -3,5 +3,5 @@
   "display_name": "Capture a Screenshot",
   "version": "0.1.0",
   "description": "Captures a screenshot of the current monitor by mouse position and copies the result to the clipboard.",
-  "manifest_url": "https://github.com/nwrenger/pointy/releases/latest/download/capture_screenshot-latest.json"
+  "latest_url": "https://github.com/nwrenger/pointy/releases/latest/download/capture_screenshot-latest.json"
 }
