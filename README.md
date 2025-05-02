@@ -21,6 +21,8 @@ pointy is a very useful clipboard extension everybody needs. It's currently bein
 - [ ] Create icon
 - [x] Add updater
 - [ ] Only Linux: Make it work, then test hidden window
+  - need to install `libappindicator` and app indicator support (like on gnome with `gnome-shell-extension-appindicator`)
+  - more i don't know
 - [ ] Only macos: Focus back last focused window on the hiding of pointy's selector
 - [x] Only Windows: Currently crashing on startup, make it work
 - [x] Add icon mind. hold duration -> no unwanted selections (through a hover outline filling thingy)
