@@ -1,17 +1,12 @@
-use std::{
-    collections::HashMap,
-    fs::{self, File},
-    io::BufWriter,
-    path::PathBuf,
-};
+use std::{collections::HashMap, path::PathBuf};
 
 use semver::Version;
 use serde::{Deserialize, Serialize};
-use tauri::State;
+use tauri::{AppHandle, Emitter, Manager, State};
 
-use crate::AppState;
+use crate::{to_tauri_error, AppState};
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ExtensionManifest {
     pub name: String,
     pub display_name: String,
@@ -32,19 +27,19 @@ pub struct Asset {
     pub checksum: String,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ExtensionInfo {
     pub manifest: ExtensionManifest,
     pub icon_path: PathBuf,
     pub enabled: bool,
 }
 
+/// Returns the extension info of all extensions
 pub fn info_extensions(app_state: State<'_, AppState>) -> tauri::Result<Vec<ExtensionInfo>> {
     let extensions_path = app_state.extensions_path.clone();
-
-    let enabled_path = extensions_path.join("enabled.json");
-    let data = std::fs::read_to_string(&enabled_path)?;
-    let enabled: Vec<PathBuf> = serde_json::from_str(&data)?;
+    let config = app_state.config.read().map_err(to_tauri_error)?.clone();
+    let enabled = config.enabled;
+    let ordered = config.ordered;
 
     let dirs = extensions_path.read_dir()?;
 
@@ -64,37 +59,46 @@ pub fn info_extensions(app_state: State<'_, AppState>) -> tauri::Result<Vec<Exte
             extensions.push(ExtensionInfo {
                 manifest,
                 icon_path,
-                enabled: enabled.contains(&PathBuf::from(path.file_name().unwrap_or_default())),
+                enabled: enabled.contains(
+                    &path
+                        .file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                        .to_string(),
+                ),
             });
         }
     }
 
+    sort_by_order(&mut extensions, &ordered);
+
     Ok(extensions)
 }
 
-/// Toggles an `extension`
-pub fn toggle_extension(key: String, state: State<'_, AppState>) -> tauri::Result<()> {
-    let path = state.extensions_path.join("enabled.json");
+fn sort_by_order(v: &mut [ExtensionInfo], ordered: &[String]) {
+    let rank: HashMap<&str, usize> = ordered
+        .iter()
+        .enumerate()
+        .map(|(i, name)| (name.as_str(), i))
+        .collect();
 
-    let mut list = load_enabled_extensions(&path)?;
-    if list.contains(&key) {
-        list.retain(|i| i != &key);
-    } else {
-        list.push(key);
+    v.sort_by_key(|i| {
+        let r = rank
+            .get(i.manifest.name.as_str())
+            .cloned()
+            .unwrap_or(usize::MAX);
+        (r, i.manifest.name.clone())
+    });
+}
+
+/// Emits an extension update to the main window.
+pub fn emit_extensions_update(app: &AppHandle) -> tauri::Result<()> {
+    let app_state = app.state::<AppState>();
+    let extensions = info_extensions(app_state)?;
+
+    if let Some(main_window) = app.get_webview_window("main") {
+        main_window.emit("update-extensions", extensions.clone())?;
     }
 
-    save_enabled_extensions(&path, &list)
-}
-
-/// Saves the enabled extensions
-pub fn save_enabled_extensions(path: &PathBuf, extensions: &[String]) -> tauri::Result<()> {
-    let file = File::create(path)?;
-    let writer = BufWriter::new(file);
-    Ok(serde_json::to_writer(writer, extensions)?)
-}
-
-/// Gets the enabled extensions
-pub fn load_enabled_extensions(path: &PathBuf) -> tauri::Result<Vec<String>> {
-    let data = fs::read_to_string(path)?;
-    Ok(serde_json::from_str(&data)?)
+    Ok(())
 }

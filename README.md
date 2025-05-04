@@ -13,10 +13,11 @@ pointy is a very useful clipboard extension everybody needs. It's currently bein
     - [x] Add publish action for in-house extensions
   - [ ] Online Hosting on Github (or something similar) with linking of setting option "Download Extensions" and good ui for easy download
     - [ ] Create for that a `pointy-extensions` repo with a big json file containing all extensions and the ability to add new ones via a bot using gh issues
-    - [ ] Create the downloading website with system detection and view of all extensions (using the `pointy-extensions` json file)
+    - [ ] Implement downloading in the settings menu with view of all extensions (using the `pointy-extensions` json file)
     - [ ] Create a template repo containing a publish action which builds for all available plattforms
+- [ ] Create project website (for downloading and extension docs)
 - [x] Add settings with: editing shortcut and autostart option
-- [x] Add AppState for AppConfig an AppData Path
+- [x] Add AppState for Config an AppData Path
 - [x] Add initial app config by reading config to app setup and State
 - [ ] Create icon
 - [x] Add updater

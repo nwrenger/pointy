@@ -1,8 +1,6 @@
 <script lang="ts">
-	import { getCurrentWindow, LogicalSize } from '@tauri-apps/api/window';
-	import { initial_extensions, run_extension, read_to_string, type ExtensionInfo } from '$lib/api';
-
-	const current_window = getCurrentWindow();
+	import { LogicalSize, Window } from '@tauri-apps/api/window';
+	import { run_extension, read_to_string, type ExtensionInfo, get_extensions } from '$lib/api';
 
 	let items: ExtensionInfo[] = $state([]);
 	function setItems(allExtensions: ExtensionInfo[]): void {
@@ -10,15 +8,10 @@
 	}
 
 	async function loadInitialItems(): Promise<void> {
-		const extensions = await initial_extensions();
-		setItems(extensions);
+		const e = await get_extensions();
+		setItems(e);
 	}
 	loadInitialItems();
-
-	// Update Items on window event
-	current_window.listen('update-extensions', ({ payload }) => {
-		setItems(payload as ExtensionInfo[]);
-	});
 
 	const buttonSize = 33;
 
@@ -26,15 +19,26 @@
 	let angleStep = $derived(360 / items.length);
 	let size = $derived(2 * radius + buttonSize + 2);
 
-	$effect(() => {
-		current_window.setSize(new LogicalSize(size, size));
-	});
-	current_window.listen('select-option', async () => {
-		if (current_option) {
-			await run_extension(current_option);
-			current_option = undefined;
-		}
-	});
+	async function update_current_window() {
+		let main_window = (await Window.getByLabel('main')) || undefined;
+
+		// Update Items on window event
+		main_window?.listen('update-extensions', ({ payload }) => {
+			setItems(payload as ExtensionInfo[]);
+		});
+
+		$effect(() => {
+			main_window?.setSize(new LogicalSize(size, size));
+		});
+
+		main_window?.listen('select-option', async () => {
+			if (current_option) {
+				await run_extension(current_option);
+				current_option = undefined;
+			}
+		});
+	}
+	update_current_window();
 
 	const timeout_duration = 150;
 	let active_timeout: NodeJS.Timeout | undefined = $state();

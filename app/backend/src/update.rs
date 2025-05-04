@@ -5,13 +5,16 @@ use tauri::{AppHandle, Manager, State};
 use tauri_plugin_updater::UpdaterExt;
 use zip::ZipArchive;
 
-use crate::{extensions::ExtensionLatest, update_system_tray, AppState};
+use crate::{
+    extensions::{emit_extensions_update, ExtensionLatest},
+    get_extensions, AppState,
+};
 
 use tracing::{error, info, warn};
 
 /// Updates the whole app
-pub async fn update_app(app: &AppHandle) -> tauri_plugin_updater::Result<()> {
-    let _ = update_system_tray(app, Some(true), None);
+#[tauri::command]
+pub async fn update_app(app: AppHandle) -> tauri_plugin_updater::Result<()> {
     if let Some(update) = app.updater()?.check().await? {
         let mut downloaded = 0;
 
@@ -32,10 +35,8 @@ pub async fn update_app(app: &AppHandle) -> tauri_plugin_updater::Result<()> {
             .await?;
 
         info!("update installed");
-        let _ = update_system_tray(app, Some(false), None);
         app.restart();
     } else {
-        let _ = update_system_tray(app, Some(false), None);
         info!("app is up-to-date");
     }
 
@@ -43,9 +44,11 @@ pub async fn update_app(app: &AppHandle) -> tauri_plugin_updater::Result<()> {
 }
 
 /// Updates all extensions
-pub fn update_extensions(app: &AppHandle) -> Result<(), String> {
+#[tauri::command]
+pub async fn update_extensions(app: AppHandle) -> Result<(), String> {
     // show updating
-    let extensions = update_system_tray(app, None, Some(true)).map_err(|e| {
+    let app_state = app.state::<AppState>();
+    let extensions = get_extensions(app_state).map_err(|e| {
         error!(%e, "failed to update system tray for extensions");
         e.to_string()
     })?;
@@ -180,14 +183,12 @@ pub fn update_extensions(app: &AppHandle) -> Result<(), String> {
         handles.push(handle);
     }
 
-    // clear updating
-    let app_handle = app.clone();
-    tauri::async_runtime::spawn(async move {
-        for h in handles {
-            let _ = h.await;
-        }
-        let _ = update_system_tray(&app_handle, None, Some(false));
-    });
+    // Wait for all updating and return errors if any
+    for h in handles {
+        h.await.map_err(|e| e.to_string())?;
+    }
+
+    emit_extensions_update(&app).map_err(|e| e.to_string())?;
 
     Ok(())
 }

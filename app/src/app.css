@@ -1,5 +1,5 @@
 @import 'tailwindcss';
-@plugin '@tailwindcss/typography';
+@plugin '@tailwindcss/forms';
 
 @import '@skeletonlabs/skeleton';
 @import '@skeletonlabs/skeleton/optional/presets';
@@ -22,4 +22,10 @@
 	* {
 		@apply select-none;
 	}
+}
+
+.preset-glass-neutral {
+	background: color-mix(in oklab, var(--color-surface-50-950) 95%, transparent);
+	box-shadow: 0 0px 30px color-mix(in oklab, var(--color-surface-50-950) 95%, transparent) inset;
+	backdrop-filter: blur(16px);
 }
