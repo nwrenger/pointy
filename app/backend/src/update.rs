@@ -15,6 +15,10 @@ use tracing::{error, info, warn};
 /// Updates the whole app
 #[tauri::command]
 pub async fn update_app(app: AppHandle) -> tauri_plugin_updater::Result<()> {
+    // Check if documents are accessable
+    let doc_dir = app.path().document_dir()?;
+    fs::read_dir(doc_dir)?;
+
     if let Some(update) = app.updater()?.check().await? {
         let mut downloaded = 0;
 
@@ -46,7 +50,6 @@ pub async fn update_app(app: AppHandle) -> tauri_plugin_updater::Result<()> {
 /// Updates all extensions
 #[tauri::command]
 pub async fn update_extensions(app: AppHandle) -> Result<(), String> {
-    // show updating
     let app_state = app.state::<AppState>();
     let extensions = get_extensions(app_state).map_err(|e| {
         error!(%e, "failed to update system tray for extensions");
