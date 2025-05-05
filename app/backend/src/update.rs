@@ -15,10 +15,6 @@ use tracing::{error, info, warn};
 /// Updates the whole app
 #[tauri::command]
 pub async fn update_app(app: AppHandle) -> tauri_plugin_updater::Result<()> {
-    // Check if documents are accessable
-    let doc_dir = app.path().document_dir()?;
-    fs::read_dir(doc_dir)?;
-
     if let Some(update) = app.updater()?.check().await? {
         let mut downloaded = 0;
 
