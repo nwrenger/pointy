@@ -2,7 +2,7 @@
 	import { Switch } from '@skeletonlabs/skeleton-svelte';
 	import { flip } from 'svelte/animate';
 	import { dragHandle, dragHandleZone, type DndEvent } from 'svelte-dnd-action';
-	import { AlignJustify } from 'lucide-svelte';
+	import { AlignJustify, Download, RefreshCcw, Trash2 } from 'lucide-svelte';
 	import { getCurrentWindow } from '@tauri-apps/api/window';
 	import {
 		get_config,
@@ -25,6 +25,7 @@
 	let extensions: ExtensionInfo[] = $state([]);
 	let new_extensions: ExtensionInfo[] = $state([]);
 
+	// Initialize config
 	async function init() {
 		config = await get_config();
 	}
@@ -34,7 +35,7 @@
 		new_config = deepClone(config);
 		extensions = await get_extensions();
 		new_extensions = deepClone(extensions);
-		// Disable Animations for dnd-list
+		// Re-enable animations after drag
 		setTimeout(() => (flipDurationMs = defaultFlipDurationMs), defaultFlipDurationMs);
 	});
 
@@ -50,10 +51,8 @@
 		updating_app = true;
 		try {
 			await update_app();
+		} finally {
 			updating_app = false;
-		} catch (e) {
-			updating_app = false;
-			throw e;
 		}
 	}
 
@@ -61,14 +60,13 @@
 		updating_extensions = true;
 		try {
 			await update_extensions();
+		} finally {
 			updating_extensions = false;
-		} catch (e) {
-			updating_extensions = false;
-			throw e;
 		}
 	}
 
 	async function cancel() {
+		// Disable animations
 		flipDurationMs = 0;
 		current_window.hide();
 	}
@@ -85,8 +83,10 @@
 	}
 </script>
 
-<div class="h-full preset-glass-neutral rounded grid grid-rows-[24px_auto_48px]">
-	<div data-tauri-drag-region class="flex justify-center">
+<div class="h-full preset-glass-neutral rounded grid grid-rows-[32px_auto_56px]">
+	<!-- Header -->
+	<div data-tauri-drag-region class="flex items-center justify-between px-3">
+		<h5 data-tauri-drag-region class="h5">Settings</h5>
 		<svg
 			data-tauri-drag-region
 			xmlns="http://www.w3.org/2000/svg"
@@ -99,25 +99,27 @@
 			stroke-linecap="round"
 			stroke-linejoin="round"
 			class="lucide lucide-grip-horizontal-icon lucide-grip-horizontal"
-			><circle data-tauri-drag-region cx="12" cy="9" r="1" />
+		>
+			<circle data-tauri-drag-region cx="12" cy="9" r="1" />
 			<circle data-tauri-drag-region cx="19" cy="9" r="1" />
 			<circle data-tauri-drag-region cx="5" cy="9" r="1" />
 			<circle data-tauri-drag-region cx="12" cy="15" r="1" />
 			<circle data-tauri-drag-region cx="19" cy="15" r="1" />
-			<circle data-tauri-drag-region cx="5" cy="15" r="1" /></svg
-		>
+			<circle data-tauri-drag-region cx="5" cy="15" r="1" />
+		</svg>
 	</div>
-	<div class="px-2 space-y-4 overflow-y-scroll h-full pb-2">
-		<h3 class="h3">Settings</h3>
 
+	<!-- Content -->
+	<div class="px-3 space-y-4 overflow-y-scroll h-full pt-4 pb-2">
 		<div class="flex justify-between items-center gap-4">
 			<p>Version {#await get_version() then version}{version}{/await}</p>
-			<button class="btn preset-filled" disabled={updating_app} onclick={init_app_update}>
-				{#if updating_app}
-					Updating...
-				{:else}
-					Check for Updates
-				{/if}
+			<button
+				class="btn-icon preset-filled"
+				disabled={updating_app}
+				title={updating_app ? 'Updating...' : 'Check for Updates'}
+				onclick={init_app_update}
+			>
+				<RefreshCcw class="{!updating_app || 'animate-spin'} size-4" />
 			</button>
 		</div>
 
@@ -153,34 +155,54 @@
 		<hr class="hr" />
 
 		<div class="space-y-2">
-			<h4 class="h4">Extensions</h4>
+			<div class="flex justify-between items-center mb-3">
+				<h4 class="h4">Extensions</h4>
+				<div class="flex items-center space-x-2">
+					<button class="btn-icon preset-filled" disabled title="Download - Not yet implemented">
+						<Download class="size-4" />
+					</button>
+					<button
+						class="btn-icon preset-filled"
+						disabled={updating_extensions}
+						title={updating_extensions ? 'Updating...' : 'Check all for Updates'}
+						onclick={init_extensions_update}
+					>
+						<RefreshCcw class="{!updating_extensions || 'animate-spin'} size-4" />
+					</button>
+				</div>
+			</div>
+
 			{#if new_extensions.length != 0}
 				<section
 					use:dragHandleZone={{ items: new_extensions, flipDurationMs }}
 					onconsider={handleDndFinalize}
 					onfinalize={handleDndFinalize}
 				>
-					{#each new_extensions as extension, i (extension.icon_path)}
+					{#each new_extensions as extension (extension.icon_path)}
 						<div
-							class="flex w-full items-center space-x-2 preset-tonal {i != new_extensions.length - 1
-								? 'border-b border-surface-200-800'
-								: ''} py-4"
+							class="flex w-full items-center space-x-2 preset-tonal border-b border-surface-200-800 last:border-0 py-4"
 							animate:flip={{ duration: flipDurationMs }}
 						>
-							<div use:dragHandle>
-								<AlignJustify class="ms-3 m-1 size-4" />
+							<div class="ps-3 p-1" use:dragHandle>
+								<AlignJustify class="size-4" />
 							</div>
 							<div class="flex w-full items-center justify-between">
 								<p>{extension.manifest.display_name}</p>
-								<input
-									class="checkbox me-4"
-									type="checkbox"
-									checked={extension.enabled}
-									oninput={(e) => {
-										let target = e.target as HTMLInputElement;
-										if (new_config) extension.enabled = target.checked;
-									}}
-								/>
+								<div class="flex items-center space-x-4 pe-3">
+									<input
+										class="checkbox"
+										type="checkbox"
+										checked={extension.enabled}
+										oninput={(e) => (extension.enabled = (e.target as HTMLInputElement).checked)}
+									/>
+									<button
+										class="btn-icon preset-filled-error-500"
+										disabled
+										title="Remove - Not yet implemented"
+									>
+										<Trash2 class="size-4 text-destructive" />
+									</button>
+								</div>
 							</div>
 						</div>
 					{/each}
@@ -188,22 +210,11 @@
 			{:else}
 				<p class="text-surface-300">No extensions downloaded...</p>
 			{/if}
-
-			<button class="btn preset-filled" disabled title="Not currently implemented">Download</button>
-			<button
-				class="btn preset-filled"
-				disabled={updating_extensions}
-				onclick={init_extensions_update}
-			>
-				{#if updating_extensions}
-					Updating all...
-				{:else}
-					Check all for Updates
-				{/if}
-			</button>
 		</div>
 	</div>
-	<div class="flex items-center justify-between px-2">
+
+	<!-- Footer -->
+	<div class="flex justify-between items-center px-3 space-x-2">
 		<button class="btn preset-filled-error-50-950" onclick={cancel}>Close</button>
 		<button
 			class="btn preset-filled"
