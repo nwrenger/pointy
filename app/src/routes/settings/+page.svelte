@@ -5,22 +5,20 @@
 	import { AlignJustify } from 'lucide-svelte';
 	import { getCurrentWindow } from '@tauri-apps/api/window';
 	import {
-		change_config,
 		get_config,
 		get_extensions,
 		get_version,
+		change_config,
 		update_app,
 		update_extensions,
 		type Config,
 		type ExtensionInfo
 	} from '$lib/api';
 	import { areObjectsEqual, deepClone } from '$lib/utils';
-	import { Window } from '@tauri-apps/api/window';
 
 	const defaultFlipDurationMs = 300;
+	const current_window = getCurrentWindow();
 	let flipDurationMs = $state(defaultFlipDurationMs);
-
-	let current_window = getCurrentWindow();
 
 	let config: Config | undefined = $state();
 	let new_config: Config | undefined = $state();
@@ -29,17 +27,16 @@
 
 	async function init() {
 		config = await get_config();
-
-		let settings_window = (await Window.getByLabel('settings')) || undefined;
-		settings_window?.listen('open-settings', async () => {
-			new_config = deepClone(config);
-			extensions = await get_extensions();
-			new_extensions = deepClone(extensions);
-			// Disb
-			setTimeout(() => (flipDurationMs = defaultFlipDurationMs), defaultFlipDurationMs);
-		});
 	}
 	init();
+
+	current_window.listen('open-settings', async () => {
+		new_config = deepClone(config);
+		extensions = await get_extensions();
+		new_extensions = deepClone(extensions);
+		// Disable Animations for dnd-list
+		setTimeout(() => (flipDurationMs = defaultFlipDurationMs), defaultFlipDurationMs);
+	});
 
 	let updating_app = $state(false);
 	let updating_extensions = $state(false);

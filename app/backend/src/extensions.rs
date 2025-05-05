@@ -97,7 +97,7 @@ pub fn emit_extensions_update(app: &AppHandle) -> tauri::Result<()> {
     let extensions = info_extensions(app_state)?;
 
     if let Some(main_window) = app.get_webview_window("main") {
-        main_window.emit("update-extensions", extensions.clone())?;
+        main_window.emit("update-extensions", extensions)?;
     }
 
     Ok(())

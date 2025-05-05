@@ -1,6 +1,8 @@
 <script lang="ts">
-	import { LogicalSize, Window } from '@tauri-apps/api/window';
+	import { getCurrentWindow, LogicalSize, Window } from '@tauri-apps/api/window';
 	import { run_extension, read_to_string, type ExtensionInfo, get_extensions } from '$lib/api';
+
+	let current_window = getCurrentWindow();
 
 	let items: ExtensionInfo[] = $state([]);
 	function setItems(allExtensions: ExtensionInfo[]): void {
@@ -13,30 +15,31 @@
 	}
 	loadInitialItems();
 
+	// Update Items on window event
+	current_window.listen('update-extensions', ({ payload }) => {
+		setItems(payload as ExtensionInfo[]);
+	});
+
 	const buttonSize = 33;
 
 	let radius = $derived(items.length * 12);
 	let angleStep = $derived(360 / items.length);
 	let size = $derived(2 * radius + buttonSize + 2);
 
+	current_window.listen('select-option', async () => {
+		console.log('asd');
+		if (current_option) {
+			await run_extension(current_option);
+			current_option = undefined;
+		}
+	});
+
+	$effect(() => {
+		current_window.setSize(new LogicalSize(size, size));
+	});
+
 	async function update_current_window() {
 		let main_window = (await Window.getByLabel('main')) || undefined;
-
-		// Update Items on window event
-		main_window?.listen('update-extensions', ({ payload }) => {
-			setItems(payload as ExtensionInfo[]);
-		});
-
-		$effect(() => {
-			main_window?.setSize(new LogicalSize(size, size));
-		});
-
-		main_window?.listen('select-option', async () => {
-			if (current_option) {
-				await run_extension(current_option);
-				current_option = undefined;
-			}
-		});
 	}
 	update_current_window();
 
