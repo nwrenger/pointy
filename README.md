@@ -11,6 +11,7 @@ pointy is a very useful clipboard extension everybody needs. It's currently bein
   - [x] Add Versioning
   - [x] Auto updating of already downloaded extensions
     - [x] Add publish action for in-house extensions
+    - [ ] Move from `zip` to `tar.zip`
   - [ ] Online Hosting on Github (or something similar) with linking of setting option "Download Extensions" and good ui for easy download
     - [ ] Create for that a `pointy-extensions` repo with a big json file containing all extensions and the ability to add new ones via a bot using gh issues
     - [ ] Implement downloading in the settings menu with view of all extensions
