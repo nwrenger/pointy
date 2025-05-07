@@ -1,8 +1,8 @@
 <script lang="ts">
-	import { Switch } from '@skeletonlabs/skeleton-svelte';
+	import { Switch, Tooltip } from '@skeletonlabs/skeleton-svelte';
 	import { flip } from 'svelte/animate';
 	import { dragHandle, dragHandleZone, type DndEvent } from 'svelte-dnd-action';
-	import { AlignJustify, Download, RefreshCcw, Trash2 } from 'lucide-svelte';
+	import { AlignJustify, Circle, Info, RefreshCw, Trash2 } from 'lucide-svelte';
 	import { getCurrentWindow } from '@tauri-apps/api/window';
 	import {
 		get_config,
@@ -15,6 +15,7 @@
 		type ExtensionInfo
 	} from '$lib/api';
 	import { areObjectsEqual, deepClone } from '$lib/utils';
+	import ExtensionsModal from './ExtensionsModal.svelte';
 
 	const defaultFlipDurationMs = 300;
 	const current_window = getCurrentWindow();
@@ -24,6 +25,7 @@
 	let new_config: Config | undefined = $state();
 	let extensions: ExtensionInfo[] = $state([]);
 	let new_extensions: ExtensionInfo[] = $state([]);
+	let error: unknown | undefined = $state();
 
 	// Initialize config
 	async function init() {
@@ -32,11 +34,18 @@
 	init();
 
 	current_window.listen('open-settings', async () => {
-		new_config = deepClone(config);
-		extensions = await get_extensions();
-		new_extensions = deepClone(extensions);
-		// Re-enable animations after drag
-		setTimeout(() => (flipDurationMs = defaultFlipDurationMs), defaultFlipDurationMs);
+		try {
+			new_config = deepClone(config);
+			extensions = await get_extensions();
+			new_extensions = deepClone(extensions);
+			// Re-enable animations after drag
+			setTimeout(() => (flipDurationMs = defaultFlipDurationMs), defaultFlipDurationMs);
+			// Remove any errors, everything worked!
+			error = undefined;
+		} catch (e) {
+			error = e;
+			throw e;
+		}
 	});
 
 	let updating_app = $state(false);
@@ -73,8 +82,8 @@
 
 	async function apply() {
 		if (new_config) {
-			new_config.enabled = new_extensions.filter((e) => e.enabled).map((e) => e.manifest.name);
-			new_config.ordered = new_extensions.map((e) => e.manifest.name);
+			new_config.enabled = new_extensions.filter((e) => e.enabled).map((e) => e.manifest.id);
+			new_config.ordered = new_extensions.map((e) => e.manifest.id);
 
 			config = await change_config(new_config);
 		}
@@ -86,7 +95,7 @@
 <div class="h-full preset-glass-neutral rounded grid grid-rows-[32px_auto_56px]">
 	<!-- Header -->
 	<div data-tauri-drag-region class="flex items-center justify-between px-3">
-		<h5 data-tauri-drag-region class="h5">Settings</h5>
+		<h4 data-tauri-drag-region class="h4">Settings</h4>
 		<svg
 			data-tauri-drag-region
 			xmlns="http://www.w3.org/2000/svg"
@@ -119,7 +128,11 @@
 				title={updating_app ? 'Updating...' : 'Check for Updates'}
 				onclick={init_app_update}
 			>
-				<RefreshCcw class="{!updating_app || 'animate-spin'} size-4" />
+				{#if updating_app}
+					<Circle class="animate-ring-indeterminate size-4" />
+				{:else}
+					<RefreshCw class="size-4" />
+				{/if}
 			</button>
 		</div>
 
@@ -148,7 +161,7 @@
 				}}
 				class="input"
 				type="text"
-				placeholder="Input"
+				placeholder="Shortcut..."
 			/>
 		</div>
 
@@ -156,18 +169,39 @@
 
 		<div class="space-y-2">
 			<div class="flex justify-between items-center mb-3">
-				<h4 class="h4">Extensions</h4>
+				<div class="flex justify-center space-x-2 items-center">
+					<h5 class="h5">Extensions</h5>
+
+					<Tooltip
+						positioning={{ placement: 'top' }}
+						triggerBase="mt-2"
+						contentBase="card preset-filled p-4 max-w-[calc(100vw-30px)]"
+						openDelay={200}
+						arrow
+					>
+						{#snippet trigger()}<Info size={18} />{/snippet}
+						{#snippet content()}
+							<p>
+								Please note that adding and deleting extensions will be instant and not reverseable
+								by not saving the settings!
+							</p>
+						{/snippet}
+					</Tooltip>
+					<p class="opacity-70"></p>
+				</div>
 				<div class="flex items-center space-x-2">
-					<button class="btn-icon preset-filled" disabled title="Download - Not yet implemented">
-						<Download class="size-4" />
-					</button>
+					<ExtensionsModal bind:already_downloaded={new_extensions} />
 					<button
 						class="btn-icon preset-filled"
 						disabled={updating_extensions}
 						title={updating_extensions ? 'Updating...' : 'Check all for Updates'}
 						onclick={init_extensions_update}
 					>
-						<RefreshCcw class="{!updating_extensions || 'animate-spin'} size-4" />
+						{#if updating_extensions}
+							<Circle class="animate-ring-indeterminate size-4" />
+						{:else}
+							<RefreshCw class="size-4" />
+						{/if}
 					</button>
 				</div>
 			</div>
@@ -187,7 +221,7 @@
 								<AlignJustify class="size-4" />
 							</div>
 							<div class="flex w-full items-center justify-between">
-								<p>{extension.manifest.display_name}</p>
+								<p>{extension.manifest.name}</p>
 								<div class="flex items-center space-x-4 pe-3">
 									<input
 										class="checkbox"
@@ -207,8 +241,10 @@
 						</div>
 					{/each}
 				</section>
+			{:else if error}
+				<p class="text-error-300">An Error occured: {error}</p>
 			{:else}
-				<p class="text-surface-300">No extensions downloaded...</p>
+				<p class="opacity-70 italic">No extensions downloaded...</p>
 			{/if}
 		</div>
 	</div>

@@ -1,6 +1,7 @@
 {
-  "name": "template",
-  "display_name": "Empty",
+  "id": "template",
+  "name": "Empty",
+  "author": "Nils Wrenger",
   "version": "0.1.0",
   "description": "Empty.",
   "latest_url": "https://github.com/nwrenger/pointy/releases/latest/download/template-latest.json"

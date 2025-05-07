@@ -8,8 +8,9 @@ use crate::{to_tauri_error, AppState};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ExtensionManifest {
+    pub id: String,
     pub name: String,
-    pub display_name: String,
+    pub author: String,
     pub version: Version,
     pub description: String,
     pub latest_url: String,
@@ -79,15 +80,15 @@ fn sort_by_order(v: &mut [ExtensionInfo], ordered: &[String]) {
     let rank: HashMap<&str, usize> = ordered
         .iter()
         .enumerate()
-        .map(|(i, name)| (name.as_str(), i))
+        .map(|(i, id)| (id.as_str(), i))
         .collect();
 
     v.sort_by_key(|i| {
         let r = rank
-            .get(i.manifest.name.as_str())
+            .get(i.manifest.id.as_str())
             .cloned()
             .unwrap_or(usize::MAX);
-        (r, i.manifest.name.clone())
+        (r, i.manifest.id.clone())
     });
 }
 

@@ -1,6 +1,7 @@
 {
-  "name": "generate_qrcode",
-  "display_name": "Generate a QrCode",
+  "id": "generate_qrcode",
+  "name": "Generate a QrCode",
+  "author": "Nils Wrenger",
   "version": "0.1.0",
   "description": "Generates a qrcode from copied text and saves it to the clipboard.",
   "latest_url": "https://github.com/nwrenger/pointy/releases/latest/download/generate_qrcode-latest.json"

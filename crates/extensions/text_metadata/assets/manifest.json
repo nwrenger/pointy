@@ -1,6 +1,7 @@
 {
-  "name": "text_metadata",
-  "display_name": "Text Metadata",
+  "id": "text_metadata",
+  "name": "Text Metadata",
+  "author": "Nils Wrenger",
   "version": "0.1.0",
   "description": "Counts character, words and lines of a copied text and returns the result to the clipboard.",
   "latest_url": "https://github.com/nwrenger/pointy/releases/latest/download/text_metadata-latest.json"

@@ -66,13 +66,13 @@ pub async fn update_extensions(app: AppHandle) -> Result<(), String> {
                 Ok(r) => {
                     error!(
                         status = %r.status(),
-                        name = %extension.manifest.name,
+                        id = %extension.manifest.id,
                         "HTTP error fetching latest file"
                     );
                     return;
                 }
                 Err(e) => {
-                    error!(name = %extension.manifest.name, %e, "request error fetching latest file");
+                    error!(id = %extension.manifest.id, %e, "request error fetching latest file");
                     return;
                 }
             };
@@ -80,7 +80,7 @@ pub async fn update_extensions(app: AppHandle) -> Result<(), String> {
                 Ok(u) => u,
                 Err(e) => {
                     error!(
-                        name = %extension.manifest.name,
+                        id = %extension.manifest.id,
                         %e,
                         "failed to parse latest file"
                     );
@@ -91,7 +91,7 @@ pub async fn update_extensions(app: AppHandle) -> Result<(), String> {
             // check for version
             if update.version <= extension.manifest.version {
                 info!(
-                    name = %extension.manifest.name,
+                    id = %extension.manifest.id,
                     new = %update.version,
                     old = %extension.manifest.version,
                     "extension is up-to-date"
@@ -104,7 +104,7 @@ pub async fn update_extensions(app: AppHandle) -> Result<(), String> {
                 Some(a) => a.clone(),
                 None => {
                     warn!(
-                        name = %extension.manifest.name,
+                        id = %extension.manifest.id,
                         platform = %key,
                         "no asset for this platform"
                     );
@@ -118,20 +118,20 @@ pub async fn update_extensions(app: AppHandle) -> Result<(), String> {
                 Ok(r) => {
                     error!(
                         status = %r.status(),
-                        name = %extension.manifest.name,
+                        id = %extension.manifest.id,
                         "HTTP error downloading asset"
                     );
                     return;
                 }
                 Err(e) => {
-                    error!(name = %extension.manifest.name, %e, "error downloading asset");
+                    error!(id = %extension.manifest.id, %e, "error downloading asset");
                     return;
                 }
             };
             let bytes = match resp2.bytes().await {
                 Ok(b) => b.to_vec(),
                 Err(e) => {
-                    error!(name = %extension.manifest.name, %e, "error reading bytes");
+                    error!(id = %extension.manifest.id, %e, "error reading bytes");
                     return;
                 }
             };
@@ -142,7 +142,7 @@ pub async fn update_extensions(app: AppHandle) -> Result<(), String> {
             let sum = hex::encode(hasher.finalize());
             if sum != asset.checksum {
                 error!(
-                    name = %extension.manifest.name,
+                    id = %extension.manifest.id,
                     expected = %asset.checksum,
                     actual = %sum,
                     "checksum mismatch"
@@ -151,8 +151,8 @@ pub async fn update_extensions(app: AppHandle) -> Result<(), String> {
             }
 
             // install into a clean folder
-            let ext_dir = state.extensions_path.join(&extension.manifest.name);
-            let temp_zip = std::env::temp_dir().join(format!("{}.zip", extension.manifest.name));
+            let ext_dir = state.extensions_path.join(&extension.manifest.id);
+            let temp_zip = std::env::temp_dir().join(format!("{}.zip", extension.manifest.id));
             let install_result = (|| -> std::io::Result<()> {
                 // wipe old
                 if ext_dir.exists() {
@@ -174,8 +174,8 @@ pub async fn update_extensions(app: AppHandle) -> Result<(), String> {
             })();
 
             match install_result {
-                Ok(()) => info!(name = %extension.manifest.name, "installed extension update"),
-                Err(e) => error!(name = %extension.manifest.name, %e, "failed to unpack extension"),
+                Ok(()) => info!(id = %extension.manifest.id, "installed extension update"),
+                Err(e) => error!(id = %extension.manifest.id, %e, "failed to unpack extension"),
             }
         });
 

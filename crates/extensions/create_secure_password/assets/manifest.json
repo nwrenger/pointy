@@ -1,6 +1,7 @@
 {
-  "name": "create_secure_password",
-  "display_name": "Creates a secure Password",
+  "id": "create_secure_password",
+  "name": "Creates a secure Password",
+  "author": "Nils Wrenger",
   "version": "0.1.0",
   "description": "Creates a 12 character long very secure password and copies it to the clipboard.",
   "latest_url": "https://github.com/nwrenger/pointy/releases/latest/download/create_secure_password-latest.json"

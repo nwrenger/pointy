@@ -27,7 +27,6 @@
 	let size = $derived(2 * radius + buttonSize + 2);
 
 	current_window.listen('select-option', async () => {
-		console.log('asd');
 		if (current_option) {
 			await run_extension(current_option);
 			current_option = undefined;
@@ -38,21 +37,16 @@
 		current_window.setSize(new LogicalSize(size, size));
 	});
 
-	async function update_current_window() {
-		let main_window = (await Window.getByLabel('main')) || undefined;
-	}
-	update_current_window();
-
 	const timeout_duration = 150;
 	let active_timeout: NodeJS.Timeout | undefined = $state();
 	let current_option: string | undefined = $state();
 
-	function mouseouseEnter(itemAction: string) {
+	function mouseouseEnter(id: string) {
 		if (active_timeout) {
 			clearTimeout(active_timeout);
 		}
 		active_timeout = setTimeout(() => {
-			current_option = itemAction;
+			current_option = id;
 			active_timeout = undefined;
 		}, timeout_duration);
 	}
@@ -72,13 +66,13 @@
 			{@const angle = angleStep * i - 90}
 			<button
 				class="absolute btn-icon cursor-pointer transition-all focus:outline-none
-										{current_option === item.manifest.name
+										{current_option === item.manifest.id
 					? 'outline preset-tonal-success duration-75'
 					: 'preset-tonal-surface duration-0'}"
-				aria-label={item.manifest.name}
+				aria-label={item.manifest.id}
 				title={item.manifest.description}
 				onfocus={() => {}}
-				onmouseover={() => mouseouseEnter(item.manifest.name)}
+				onmouseover={() => mouseouseEnter(item.manifest.id)}
 				onmouseleave={mouseouseLeave}
 				style={`
 					top: 50%;

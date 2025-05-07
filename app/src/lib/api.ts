@@ -1,8 +1,9 @@
 import { invoke } from '@tauri-apps/api/core';
 
 export interface ExtensionManifest {
+	id: string;
 	name: string;
-	display_name: string;
+	author: string;
 	version: string;
 	description: string;
 	latest_url: string;
