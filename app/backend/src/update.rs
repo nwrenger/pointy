@@ -1,16 +1,15 @@
-use std::fs::{self, File};
-
-use sha2::{Digest, Sha256};
 use tauri::{AppHandle, Manager, State};
 use tauri_plugin_updater::UpdaterExt;
-use zip::ZipArchive;
 
 use crate::{
-    extensions::{emit_extensions_update, ExtensionLatest},
+    error,
+    extensions::{
+        download_extension, download_extension_latest, emit_extensions_update, install_extension,
+    },
     get_extensions, AppState,
 };
 
-use tracing::{error, info, warn};
+use tracing::{error, info};
 
 /// Updates the whole app
 #[tauri::command]
@@ -45,12 +44,9 @@ pub async fn update_app(app: AppHandle) -> tauri_plugin_updater::Result<()> {
 
 /// Updates all extensions
 #[tauri::command]
-pub async fn update_extensions(app: AppHandle) -> Result<(), String> {
+pub async fn update_extensions(app: AppHandle) -> error::Result<()> {
     let app_state = app.state::<AppState>();
-    let extensions = get_extensions(app_state).map_err(|e| {
-        error!(%e, "failed to update system tray for extensions");
-        e.to_string()
-    })?;
+    let extensions = get_extensions(app_state)?;
 
     let mut handles = Vec::with_capacity(extensions.len());
     for extension in extensions {
@@ -58,122 +54,35 @@ pub async fn update_extensions(app: AppHandle) -> Result<(), String> {
 
         let handle = tauri::async_runtime::spawn(async move {
             let state: State<'_, AppState> = app_handle.state();
-            let key = current_platform_key();
 
-            // fetch the remote update manifest
-            let resp = match reqwest::get(&extension.manifest.latest_url).await {
-                Ok(r) if r.status().is_success() => r,
-                Ok(r) => {
-                    error!(
-                        status = %r.status(),
-                        id = %extension.manifest.id,
-                        "HTTP error fetching latest file"
-                    );
-                    return;
-                }
+            let latest = match download_extension_latest(&extension.manifest.latest_url).await {
+                Ok(latest) => latest,
                 Err(e) => {
-                    error!(id = %extension.manifest.id, %e, "request error fetching latest file");
-                    return;
-                }
-            };
-            let update: ExtensionLatest = match resp.json().await {
-                Ok(u) => u,
-                Err(e) => {
-                    error!(
-                        id = %extension.manifest.id,
-                        %e,
-                        "failed to parse latest file"
-                    );
+                    error!(id = %extension.manifest.id, %e);
                     return;
                 }
             };
 
             // check for version
-            if update.version <= extension.manifest.version {
+            if latest.version <= extension.manifest.version {
                 info!(
                     id = %extension.manifest.id,
-                    new = %update.version,
+                    new = %latest.version,
                     old = %extension.manifest.version,
                     "extension is up-to-date"
                 );
                 return;
             }
 
-            // pick the right asset
-            let asset = match update.assets.get(&key) {
-                Some(a) => a.clone(),
-                None => {
-                    warn!(
-                        id = %extension.manifest.id,
-                        platform = %key,
-                        "no asset for this platform"
-                    );
-                    return;
-                }
-            };
-
-            // download the ZIP
-            let resp2 = match reqwest::get(&asset.url).await {
-                Ok(r) if r.status().is_success() => r,
-                Ok(r) => {
-                    error!(
-                        status = %r.status(),
-                        id = %extension.manifest.id,
-                        "HTTP error downloading asset"
-                    );
-                    return;
-                }
+            let bytes = match download_extension(&latest).await {
+                Ok(bytes) => bytes,
                 Err(e) => {
-                    error!(id = %extension.manifest.id, %e, "error downloading asset");
-                    return;
-                }
-            };
-            let bytes = match resp2.bytes().await {
-                Ok(b) => b.to_vec(),
-                Err(e) => {
-                    error!(id = %extension.manifest.id, %e, "error reading bytes");
+                    error!(id = %extension.manifest.id, %e);
                     return;
                 }
             };
 
-            // verify SHA-256 checksum
-            let mut hasher = Sha256::new();
-            hasher.update(&bytes);
-            let sum = hex::encode(hasher.finalize());
-            if sum != asset.checksum {
-                error!(
-                    id = %extension.manifest.id,
-                    expected = %asset.checksum,
-                    actual = %sum,
-                    "checksum mismatch"
-                );
-                return;
-            }
-
-            // install into a clean folder
-            let ext_dir = state.extensions_path.join(&extension.manifest.id);
-            let temp_zip = std::env::temp_dir().join(format!("{}.zip", extension.manifest.id));
-            let install_result = (|| -> std::io::Result<()> {
-                // wipe old
-                if ext_dir.exists() {
-                    fs::remove_dir_all(&ext_dir)?;
-                }
-                fs::create_dir_all(&ext_dir)?;
-
-                // write ZIP
-                fs::write(&temp_zip, &bytes)?;
-
-                // unzip
-                let f = File::open(&temp_zip)?;
-                let mut archive = ZipArchive::new(f)?;
-                archive.extract(&ext_dir)?;
-
-                // cleanup
-                fs::remove_file(&temp_zip)?;
-                Ok(())
-            })();
-
-            match install_result {
+            match install_extension(&extension.manifest.id, bytes, state).await {
                 Ok(()) => info!(id = %extension.manifest.id, "installed extension update"),
                 Err(e) => error!(id = %extension.manifest.id, %e, "failed to unpack extension"),
             }
@@ -184,21 +93,10 @@ pub async fn update_extensions(app: AppHandle) -> Result<(), String> {
 
     // Wait for all updating and return errors if any
     for h in handles {
-        h.await.map_err(|e| e.to_string())?;
+        h.await?;
     }
 
-    emit_extensions_update(&app).map_err(|e| e.to_string())?;
+    emit_extensions_update(&app)?;
 
     Ok(())
-}
-
-/// Returns the current platform
-pub fn current_platform_key() -> String {
-    let raw_os = std::env::consts::OS;
-    let os = match raw_os {
-        "macos" => "darwin",
-        other_os => other_os,
-    };
-    let arch = std::env::consts::ARCH;
-    format!("{}-{}", os, arch)
 }

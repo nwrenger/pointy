@@ -172,21 +172,6 @@
 				<div class="flex justify-center space-x-2 items-center">
 					<h5 class="h5">Extensions</h5>
 
-					<Tooltip
-						positioning={{ placement: 'top' }}
-						triggerBase="mt-2"
-						contentBase="card preset-filled p-4 max-w-[calc(100vw-30px)]"
-						openDelay={200}
-						arrow
-					>
-						{#snippet trigger()}<Info size={18} />{/snippet}
-						{#snippet content()}
-							<p>
-								Please note that adding and deleting extensions will be instant and not reverseable
-								by not saving the settings!
-							</p>
-						{/snippet}
-					</Tooltip>
 					<p class="opacity-70"></p>
 				</div>
 				<div class="flex items-center space-x-2">
@@ -220,9 +205,11 @@
 							<div class="ps-3 p-1" use:dragHandle>
 								<AlignJustify class="size-4" />
 							</div>
-							<div class="flex w-full items-center justify-between">
-								<p>{extension.manifest.name}</p>
-								<div class="flex items-center space-x-4 pe-3">
+							<div class="w-full items-center justify-between grid grid-cols-[auto_85px]">
+								<p class="truncate w-full">
+									{extension.manifest.name}
+								</p>
+								<div class="flex items-center space-x-4 pe-3 justify-end">
 									<input
 										class="checkbox"
 										type="checkbox"
@@ -230,8 +217,7 @@
 										oninput={(e) => (extension.enabled = (e.target as HTMLInputElement).checked)}
 									/>
 									<button
-										class="btn-icon preset-filled-error-500"
-										disabled
+										class="btn-icon box-[none] flex preset-filled-error-500 z-10"
 										title="Remove - Not yet implemented"
 									>
 										<Trash2 class="size-4 text-destructive" />

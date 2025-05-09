@@ -50,11 +50,6 @@ jobs:
             libsoup2.4-dev libwebkit2gtk-4.1-dev libappindicator3-dev \
             librsvg2-dev patchelf libdbus-1-dev pkg-config
 
-      - name: Install dependencies (Windows only)
-        if: matrix.platform == 'windows-x86_64'
-        shell: pwsh
-        run: choco install zip -y
-
       - name: install Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -91,7 +86,7 @@ jobs:
             [ -d "$ext" ] || continue
             name=$(basename "$ext")
 
-            # figure out the built lib path and how to name it inside the zip
+            # locate the built library
             if [[ "$PLATFORM" == "windows-x86_64" ]]; then
               src="$root_dir/target/$TARGET/release/${name}.${LIB_EXT}"
               lib_filename="lib.${LIB_EXT}"
@@ -114,11 +109,11 @@ jobs:
             cp "$ext/assets/manifest.json" "$staging/"
 
             pushd "$staging" > /dev/null
-              zip -r "$dist_dir/${name}_${PLATFORM}.zip" ./*
+              tar czf "$dist_dir/${name}_${PLATFORM}.tar.gz" ./*
             popd > /dev/null
 
             rm -rf "$staging"
-            echo "→ Created: $dist_dir/${name}_${PLATFORM}.zip"
+            echo "→ Created: $dist_dir/${name}_${PLATFORM}.tar.gz"
           done
 
       - name: Upload build artifacts
@@ -163,16 +158,16 @@ jobs:
             manifest="{\"version\":\"$version\",\"assets\":{"
             first=true
 
-            # now glob for dist/{name}_{platform}.zip
-            for zip in dist/"${name}"_*.zip; do
-              [ -f "$zip" ] || continue
-              fname=$(basename "$zip")
+            # now glob for dist/{name}_{platform}.tar.gz
+            for archive in dist/"${name}"_*.tar.gz; do
+              [ -f "$archive" ] || continue
+              fname=$(basename "$archive")
 
               # extract platform from filename
               plat="${fname#${name}_}"
-              plat="${plat%.zip}"
+              plat="${plat%.tar.gz}"
 
-              checksum=$(sha256sum "$zip" | cut -d' ' -f1)
+              checksum=$(sha256sum "$archive" | cut -d' ' -f1)
               url="${BASE_URL}/${fname}"
 
               if [ "$first" = true ]; then

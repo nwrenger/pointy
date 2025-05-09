@@ -17,6 +17,7 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = ["macos-private-api", "tray-icon"] }
 tauri-plugin-autostart = "2"
 tauri-plugin-global-shortcut = "2"
+global-hotkey = "0.6.4"
 tauri-plugin-updater = "2"
 pointy_api = { path = "../../crates/pointy_api" }
 serde = { version = "1", features = ["derive"] }
@@ -25,7 +26,8 @@ libloading = "0.8.6"
 reqwest = "0.12.15"
 sha2 = "0.10.9"
 hex = "0.4.3"
-zip = "2.6.1"
+flate2 = { version = "1.1.1" }
+tar = "0.4.44"
 semver = { version = "1.0.26", features = ["serde"] }
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }

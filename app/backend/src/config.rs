@@ -5,7 +5,7 @@ use tauri::{AppHandle, Manager, State};
 use tauri_plugin_autostart::ManagerExt;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
 
-use crate::{extensions::emit_extensions_update, to_tauri_error, AppState};
+use crate::{error, extensions::emit_extensions_update, AppState};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Config {
@@ -34,8 +34,8 @@ pub fn load_config(path: &PathBuf) -> tauri::Result<Config> {
 
 /// Fetches the current config from the state
 #[tauri::command]
-pub fn get_config(app_state: State<'_, AppState>) -> Result<Config, String> {
-    let config = app_state.config.read().map_err(|e| e.to_string())?;
+pub fn get_config(app_state: State<'_, AppState>) -> error::Result<Config> {
+    let config = app_state.config.read()?;
     Ok(config.clone())
 }
 
@@ -45,26 +45,22 @@ pub fn change_config(
     new_config: Config,
     app: AppHandle,
     app_state: State<'_, AppState>,
-) -> tauri::Result<Config> {
-    let old_config = app_state.config.read().map_err(to_tauri_error)?;
+) -> error::Result<Config> {
+    let old_config = app_state.config.read()?;
 
     // Check if shortcut has changed
     if old_config.shortcut != new_config.shortcut {
         // Remove old shortcut
-        let old_shortcut = Shortcut::from_str(&old_config.shortcut).map_err(to_tauri_error)?;
-        app.global_shortcut()
-            .unregister(old_shortcut)
-            .map_err(to_tauri_error)?;
+        let old_shortcut = Shortcut::from_str(&old_config.shortcut)?;
+        app.global_shortcut().unregister(old_shortcut)?;
 
         // Add new shortcut
-        let new_shortcut = Shortcut::from_str(&new_config.shortcut).map_err(to_tauri_error)?;
-        app.global_shortcut()
-            .register(new_shortcut)
-            .map_err(to_tauri_error)?;
+        let new_shortcut = Shortcut::from_str(&new_config.shortcut)?;
+        app.global_shortcut().register(new_shortcut)?;
     }
 
     if new_config.autolaunch != old_config.autolaunch {
-        set_autolaunch(&new_config, &app).map_err(to_tauri_error)?;
+        set_autolaunch(&new_config, &app)?;
     }
 
     let old_config_clone = old_config.clone();
@@ -72,7 +68,7 @@ pub fn change_config(
     drop(old_config);
 
     // Save to app state
-    let mut config = app_state.config.write().map_err(to_tauri_error)?;
+    let mut config = app_state.config.write()?;
     *config = new_config.clone();
 
     drop(config);
@@ -104,9 +100,9 @@ pub fn set_autolaunch(
 }
 
 /// Persists the app config by saving it to the disk
-pub fn persist_config(app: &AppHandle) -> tauri::Result<()> {
+pub fn persist_config(app: &AppHandle) -> error::Result<()> {
     let app_state: State<'_, AppState> = app.state();
-    let config = app_state.config.read().map_err(to_tauri_error)?;
+    let config = app_state.config.read()?;
 
     fs::write(&app_state.config_path, serde_json::to_string(&*config)?)?;
 

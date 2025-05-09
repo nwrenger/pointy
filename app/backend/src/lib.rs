@@ -1,11 +1,15 @@
 pub mod config;
+pub mod error;
 pub mod extensions;
 pub mod update;
 
 use std::{ffi::CString, fs, path::PathBuf, str::FromStr, sync::RwLock};
 
 use config::{change_config, get_config, load_config, persist_config, set_autolaunch, Config};
-use extensions::{info_extensions, ExtensionInfo};
+use error::Error;
+use extensions::{
+    delete_extension, download_and_install_extension, info_extensions, ExtensionInfo,
+};
 use libloading::{Library, Symbol};
 use pointy_api::device_query::{DeviceQuery, DeviceState};
 use tauri::{
@@ -36,14 +40,6 @@ impl AppState {
     }
 }
 
-/// Converts everything to a tauri error
-pub fn to_tauri_error<E: std::fmt::Display>(e: E) -> tauri::Error {
-    tauri::Error::from(std::io::Error::new(
-        std::io::ErrorKind::Other,
-        e.to_string(),
-    ))
-}
-
 /// Gets app version.
 #[tauri::command]
 fn get_version() -> &'static str {
@@ -52,8 +48,8 @@ fn get_version() -> &'static str {
 
 /// Get the extensions. Use the event `update-extensions` for listening to updates.
 #[tauri::command]
-fn get_extensions(app_state: State<'_, AppState>) -> Result<Vec<ExtensionInfo>, String> {
-    info_extensions(app_state).map_err(|e| e.to_string())
+fn get_extensions(app_state: State<'_, AppState>) -> error::Result<Vec<ExtensionInfo>> {
+    info_extensions(app_state)
 }
 
 /// Runs a specified extension. It loads the appropriate dynamic library
@@ -63,7 +59,7 @@ fn get_extensions(app_state: State<'_, AppState>) -> Result<Vec<ExtensionInfo>, 
 ///   pub extern "C" fn run() -> *mut c_char
 ///
 #[tauri::command]
-fn run_extension(extension_name: String, app_state: State<'_, AppState>) -> Result<(), String> {
+fn run_extension(extension_name: String, app_state: State<'_, AppState>) -> error::Result<()> {
     #[cfg(target_os = "windows")]
     let lib_filename = "lib.dll";
     #[cfg(target_os = "macos")]
@@ -77,41 +73,34 @@ fn run_extension(extension_name: String, app_state: State<'_, AppState>) -> Resu
         .join(lib_filename);
 
     unsafe {
-        let lib = Library::new(&extensions_path).map_err(|e| {
-            format!(
-                "Failed to load extension {}: {}",
-                extensions_path.display(),
-                e
-            )
-        })?;
+        let lib = Library::new(&extensions_path)?;
 
         let func: Symbol<unsafe extern "C" fn() -> *mut std::os::raw::c_char> =
-            lib.get(b"run\0")
-                .map_err(|e| format!("Failed to find symbol 'run': {}", e))?;
+            lib.get(b"run\0")?;
 
         let raw_ptr = func();
         if raw_ptr.is_null() {
-            return Err("Extension returned a null pointer".to_string());
+            return Err(Error::LibLoading(
+                "Extension returned a null pointer".to_string(),
+            ));
         }
 
         let cstring = CString::from_raw(raw_ptr);
-        let result_str = cstring
-            .into_string()
-            .map_err(|e| format!("Failed to convert C string: {}", e))?;
+        let result_str = cstring.into_string()?;
 
         // As with the helper in `pointy_api`, if the string is empty no error occurred
         if result_str.is_empty() {
             Ok(())
         } else {
-            Err(result_str)
+            Err(Error::LibLoading(result_str))
         }
     }
 }
 
 /// Reads the file of a certain path to string.
 #[tauri::command]
-fn read_to_string(path: PathBuf) -> Result<String, String> {
-    fs::read_to_string(path).map_err(|e| e.to_string())
+fn read_to_string(path: PathBuf) -> error::Result<String> {
+    Ok(fs::read_to_string(path)?)
 }
 
 /// Starting point for desktop app
@@ -246,6 +235,8 @@ pub fn run() {
             get_version,
             get_extensions,
             run_extension,
+            download_and_install_extension,
+            delete_extension,
             update_app,
             update_extensions,
             get_config,

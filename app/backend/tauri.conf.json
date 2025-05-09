@@ -34,8 +34,8 @@
         "transparent": true,
         "visible": false,
         "backgroundThrottling": "disabled",
-        "width": 400,
-        "height": 600,
+        "width": 500,
+        "height": 700,
         "minWidth": 350,
         "minHeight": 350
       }

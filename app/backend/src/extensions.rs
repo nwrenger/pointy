@@ -1,10 +1,20 @@
-use std::{collections::HashMap, path::PathBuf};
+use std::{
+    collections::HashMap,
+    fs::{self, File},
+    path::PathBuf,
+};
 
+use flate2::write::GzDecoder;
 use semver::Version;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+use tar::Archive;
 use tauri::{AppHandle, Emitter, Manager, State};
 
-use crate::{to_tauri_error, AppState};
+use crate::{
+    error::{self, Error},
+    AppState,
+};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ExtensionManifest {
@@ -36,9 +46,9 @@ pub struct ExtensionInfo {
 }
 
 /// Returns the extension info of all extensions
-pub fn info_extensions(app_state: State<'_, AppState>) -> tauri::Result<Vec<ExtensionInfo>> {
+pub fn info_extensions(app_state: State<'_, AppState>) -> error::Result<Vec<ExtensionInfo>> {
     let extensions_path = app_state.extensions_path.clone();
-    let config = app_state.config.read().map_err(to_tauri_error)?.clone();
+    let config = app_state.config.read()?.clone();
     let enabled = config.enabled;
     let ordered = config.ordered;
 
@@ -93,7 +103,7 @@ fn sort_by_order(v: &mut [ExtensionInfo], ordered: &[String]) {
 }
 
 /// Emits an extension update to the main window.
-pub fn emit_extensions_update(app: &AppHandle) -> tauri::Result<()> {
+pub fn emit_extensions_update(app: &AppHandle) -> error::Result<()> {
     let app_state = app.state::<AppState>();
     let extensions = info_extensions(app_state)?;
 
@@ -102,4 +112,122 @@ pub fn emit_extensions_update(app: &AppHandle) -> tauri::Result<()> {
     }
 
     Ok(())
+}
+
+/// Download extension latest of `latest_url`
+pub async fn download_extension_latest(latest_url: &String) -> error::Result<ExtensionLatest> {
+    let resp = reqwest::get(latest_url).await?;
+    let latest: ExtensionLatest = resp.json().await?;
+
+    Ok(latest)
+}
+
+/// Download extension assets
+pub async fn download_extension(extension_latest: &ExtensionLatest) -> error::Result<Vec<u8>> {
+    let key = current_platform_key();
+
+    if let Some(asset) = extension_latest.assets.get(&key) {
+        // download the ZIP
+        let resp = reqwest::get(&asset.url).await?;
+        let bytes = resp.bytes().await?.to_vec();
+
+        // verify SHA-256 checksum
+        let mut hasher = Sha256::new();
+        hasher.update(&bytes);
+        let sum = hex::encode(hasher.finalize());
+        if sum != asset.checksum {
+            return Err(Error::Checksum);
+        }
+
+        Ok(bytes)
+    } else {
+        Err(Error::NoAssets)
+    }
+}
+
+/// Returns the current platform
+pub fn current_platform_key() -> String {
+    let raw_os = std::env::consts::OS;
+    let os = match raw_os {
+        "macos" => "darwin",
+        other_os => other_os,
+    };
+    let arch = std::env::consts::ARCH;
+    format!("{}-{}", os, arch)
+}
+
+/// Install downloaded `bytes` to extensions folder by `extension_id`
+pub async fn install_extension(
+    extension_id: &String,
+    bytes: Vec<u8>,
+    app_state: State<'_, AppState>,
+) -> error::Result<()> {
+    let extension_directory = app_state.extensions_path.join(&extension_id);
+    let tmp = std::env::temp_dir().join(format!("{extension_id}.tar.gz"));
+
+    // empty extension directory if it exists
+    if extension_directory.exists() {
+        fs::remove_dir_all(&extension_directory)?;
+    }
+
+    // create the extension dir
+    fs::create_dir_all(&extension_directory)?;
+
+    // write tar.gz
+    fs::write(&tmp, &bytes)?;
+
+    // unzip
+    let tar_gz = File::open(&tmp)?;
+    let dec = GzDecoder::new(tar_gz);
+    Archive::new(dec).unpack(extension_directory)?;
+
+    // cleanup
+    fs::remove_file(&tmp)?;
+    Ok(())
+}
+
+/// Delete extension by `extension_id`
+#[tauri::command]
+pub async fn delete_extension(extension_id: String, app: AppHandle) -> error::Result<()> {
+    let app_state = app.state::<AppState>();
+
+    let extension_directory = app_state.extensions_path.join(&extension_id);
+    if extension_directory.exists() {
+        fs::remove_dir_all(&extension_directory)?;
+    }
+    emit_extensions_update(&app)?;
+
+    Ok(())
+}
+
+/// Downloads and installs an extension
+#[tauri::command]
+pub async fn download_and_install_extension(
+    extension_manifest: ExtensionManifest,
+    app: AppHandle,
+) -> error::Result<ExtensionInfo> {
+    let app_state = app.state::<AppState>();
+
+    let latest = download_extension_latest(&extension_manifest.latest_url).await?;
+    let bytes = download_extension(&latest).await?;
+    install_extension(&extension_manifest.id, bytes, app_state.clone()).await?;
+
+    // Emit update
+    emit_extensions_update(&app)?;
+
+    // Return newly installed extension
+    let extensions_path = app_state.extensions_path.clone();
+    let config = app_state.config.read()?.clone();
+    let enabled = config.enabled;
+
+    let icon_path = extensions_path
+        .join(&extension_manifest.id)
+        .join("icon.svg");
+    let this_enabled = enabled.contains(&extension_manifest.id);
+
+    Ok(ExtensionInfo {
+        manifest: extension_manifest,
+        icon_path,
+        enabled: this_enabled,
+    })
 }

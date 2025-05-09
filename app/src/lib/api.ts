@@ -36,6 +36,20 @@ export async function run_extension(extension_name: string): Promise<void> {
 	});
 }
 
+export async function download_and_install_extension(
+	extension_manifest: ExtensionManifest
+): Promise<ExtensionInfo> {
+	return await invoke('download_and_install_extension', {
+		extensionManifest: extension_manifest
+	});
+}
+
+export async function delete_extension(extension_id: string): Promise<void> {
+	return await invoke('delete_extension', {
+		extensionId: extension_id
+	});
+}
+
 export async function update_app(): Promise<void> {
 	return await invoke('update_app');
 }
