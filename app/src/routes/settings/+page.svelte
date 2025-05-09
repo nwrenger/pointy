@@ -1,76 +1,111 @@
 <script lang="ts">
-	import { Switch, Tooltip } from '@skeletonlabs/skeleton-svelte';
+	import { Switch } from '@skeletonlabs/skeleton-svelte';
 	import { flip } from 'svelte/animate';
 	import { dragHandle, dragHandleZone, type DndEvent } from 'svelte-dnd-action';
-	import { AlignJustify, Circle, Info, RefreshCw, Trash2 } from 'lucide-svelte';
-	import { getCurrentWindow } from '@tauri-apps/api/window';
-	import {
-		get_config,
-		get_extensions,
-		get_version,
-		change_config,
-		update_app,
-		update_extensions,
-		type Config,
-		type ExtensionInfo
-	} from '$lib/api';
+	import { AlignJustify, Circle, RefreshCw, Trash2 } from 'lucide-svelte';
+	import { getCurrentWindow, Window } from '@tauri-apps/api/window';
 	import { areObjectsEqual, deepClone } from '$lib/utils';
 	import ExtensionsModal from './ExtensionsModal.svelte';
+	import { handle_promise } from '$lib/toaster';
+	import api from '$lib/api';
 
 	const defaultFlipDurationMs = 300;
 	const current_window = getCurrentWindow();
 	let flipDurationMs = $state(defaultFlipDurationMs);
 
-	let config: Config | undefined = $state();
-	let new_config: Config | undefined = $state();
-	let extensions: ExtensionInfo[] = $state([]);
-	let new_extensions: ExtensionInfo[] = $state([]);
-	let error: unknown | undefined = $state();
+	let config: api.Config | undefined = $state();
+	let edited_config: api.Config | undefined = $state();
+	let extensions: api.ExtensionInfo[] = $state([]);
+	let edited_extensions: api.ExtensionInfo[] = $state([]);
 
 	// Initialize config
 	async function init() {
-		config = await get_config();
+		config = await handle_promise(api.get_config());
 	}
 	init();
 
 	current_window.listen('open-settings', async () => {
-		try {
-			new_config = deepClone(config);
-			extensions = await get_extensions();
-			new_extensions = deepClone(extensions);
-			// Re-enable animations after drag
-			setTimeout(() => (flipDurationMs = defaultFlipDurationMs), defaultFlipDurationMs);
-			// Remove any errors, everything worked!
-			error = undefined;
-		} catch (e) {
-			error = e;
-			throw e;
-		}
+		edited_config = deepClone(config);
+		extensions = await handle_promise(api.get_installed_extensions());
+		edited_extensions = deepClone(extensions);
+		// Re-enable animations after drag
+		setTimeout(() => (flipDurationMs = defaultFlipDurationMs), defaultFlipDurationMs);
 	});
+
+	// Wait for changes of the extensions but also preserving the order and enabled attributes
+	async function wait_changes() {
+		let main_window = await Window.getByLabel('main');
+		if (main_window) {
+			main_window.listen('update-extensions', ({ payload }) => {
+				let payload_typed = payload as api.ExtensionInfo[];
+
+				const updateMap = new Map<string, api.ExtensionInfo>();
+				for (const e of payload_typed) {
+					updateMap.set(e.manifest.id, e);
+				}
+
+				extensions = extensions.map((old) => {
+					const updated = updateMap.get(old.manifest.id);
+					return updated
+						? {
+								manifest: updated.manifest,
+								icon_path: updated.icon_path,
+								enabled: old.enabled
+							}
+						: old;
+				});
+
+				edited_extensions = edited_extensions.map((old) => {
+					const updated = updateMap.get(old.manifest.id);
+					return updated
+						? {
+								manifest: updated.manifest,
+								icon_path: updated.icon_path,
+								enabled: old.enabled
+							}
+						: old;
+				});
+			});
+		}
+	}
+	wait_changes();
 
 	let updating_app = $state(false);
 	let updating_extensions = $state(false);
+	let deleting: Record<string, boolean> = $state({});
 
 	function handleDndFinalize(event: CustomEvent<DndEvent>) {
 		const { items: newOrder } = event.detail;
-		new_extensions = newOrder as any[];
+		edited_extensions = newOrder as any[];
 	}
 
-	async function init_app_update() {
+	async function app_update() {
 		updating_app = true;
 		try {
-			await update_app();
+			await handle_promise(api.update_app());
 		} finally {
 			updating_app = false;
 		}
 	}
 
-	async function init_extensions_update() {
+	async function extensions_update() {
 		updating_extensions = true;
 		try {
-			await update_extensions();
+			await handle_promise(api.update_extensions());
 		} finally {
 			updating_extensions = false;
+		}
+	}
+
+	async function remove(id: string) {
+		deleting[id] = true;
+		try {
+			await handle_promise(api.delete_extension(id));
+			// Filter both because when deleting extensions it changes also the config like this
+			extensions = extensions.filter((e) => e.manifest.id !== id);
+			edited_extensions = edited_extensions.filter((e) => e.manifest.id !== id);
+		} finally {
+			deleting[id] = false;
 		}
 	}
 
@@ -81,12 +116,12 @@
 	}
 
 	async function apply() {
-		if (new_config) {
-			new_config.enabled = new_extensions.filter((e) => e.enabled).map((e) => e.manifest.id);
-			new_config.ordered = new_extensions.map((e) => e.manifest.id);
+		if (!edited_config) return;
 
-			config = await change_config(new_config);
-		}
+		edited_config.enabled = edited_extensions.filter((e) => e.enabled).map((e) => e.manifest.id);
+		edited_config.ordered = edited_extensions.map((e) => e.manifest.id);
+
+		config = await handle_promise(api.change_config(edited_config));
 
 		current_window.hide();
 	}
@@ -121,12 +156,12 @@
 	<!-- Content -->
 	<div class="px-3 space-y-4 overflow-y-scroll h-full pt-4 pb-2">
 		<div class="flex justify-between items-center gap-4">
-			<p>Version {#await get_version() then version}{version}{/await}</p>
+			<p>Version {#await handle_promise(api.get_version()) then version}{version}{/await}</p>
 			<button
 				class="btn-icon preset-filled"
 				disabled={updating_app}
 				title={updating_app ? 'Updating...' : 'Check for Updates'}
-				onclick={init_app_update}
+				onclick={app_update}
 			>
 				{#if updating_app}
 					<Circle class="animate-ring-indeterminate size-4" />
@@ -142,9 +177,9 @@
 			<p>Start on Sytem Startup</p>
 			<Switch
 				name="autolaunch"
-				checked={new_config?.autolaunch}
+				checked={edited_config?.autolaunch}
 				onCheckedChange={(e) => {
-					if (new_config) new_config.autolaunch = e.checked;
+					if (edited_config) edited_config.autolaunch = e.checked;
 				}}
 			></Switch>
 		</div>
@@ -154,10 +189,10 @@
 		<div class="flex justify-between items-center gap-4">
 			<p>Shortcut</p>
 			<input
-				value={new_config?.shortcut}
+				value={edited_config?.shortcut}
 				oninput={(e) => {
 					let target = e.target as HTMLInputElement;
-					if (new_config) new_config.shortcut = target.value;
+					if (edited_config) edited_config.shortcut = target.value;
 				}}
 				class="input"
 				type="text"
@@ -175,12 +210,12 @@
 					<p class="opacity-70"></p>
 				</div>
 				<div class="flex items-center space-x-2">
-					<ExtensionsModal bind:already_downloaded={new_extensions} />
+					<ExtensionsModal bind:already_installed={edited_extensions} />
 					<button
 						class="btn-icon preset-filled"
 						disabled={updating_extensions}
 						title={updating_extensions ? 'Updating...' : 'Check all for Updates'}
-						onclick={init_extensions_update}
+						onclick={extensions_update}
 					>
 						{#if updating_extensions}
 							<Circle class="animate-ring-indeterminate size-4" />
@@ -191,13 +226,13 @@
 				</div>
 			</div>
 
-			{#if new_extensions.length != 0}
+			{#if edited_extensions.length != 0}
 				<section
-					use:dragHandleZone={{ items: new_extensions, flipDurationMs }}
+					use:dragHandleZone={{ items: edited_extensions, flipDurationMs }}
 					onconsider={handleDndFinalize}
 					onfinalize={handleDndFinalize}
 				>
-					{#each new_extensions as extension (extension.icon_path)}
+					{#each edited_extensions as extension (extension.icon_path)}
 						<div
 							class="flex w-full items-center space-x-2 preset-tonal border-b border-surface-200-800 last:border-0 py-4"
 							animate:flip={{ duration: flipDurationMs }}
@@ -218,17 +253,21 @@
 									/>
 									<button
 										class="btn-icon box-[none] flex preset-filled-error-500 z-10"
-										title="Remove - Not yet implemented"
+										title={deleting[extension.manifest.id] ? 'Removing…' : 'Remove'}
+										disabled={updating_extensions || deleting[extension.manifest.id]}
+										onclick={() => remove(extension.manifest.id)}
 									>
-										<Trash2 class="size-4 text-destructive" />
+										{#if deleting[extension.manifest.id]}
+											<Circle class="animate-ring-indeterminate size-4" />
+										{:else}
+											<Trash2 class="size-4 text-destructive" />
+										{/if}
 									</button>
 								</div>
 							</div>
 						</div>
 					{/each}
 				</section>
-			{:else if error}
-				<p class="text-error-300">An Error occured: {error}</p>
 			{:else}
 				<p class="opacity-70 italic">No extensions downloaded...</p>
 			{/if}
@@ -240,7 +279,8 @@
 		<button class="btn preset-filled-error-50-950" onclick={cancel}>Close</button>
 		<button
 			class="btn preset-filled"
-			disabled={areObjectsEqual(config, new_config) && areObjectsEqual(extensions, new_extensions)}
+			disabled={areObjectsEqual(config, edited_config) &&
+				areObjectsEqual(extensions, edited_extensions)}
 			onclick={apply}>Apply</button
 		>
 	</div>

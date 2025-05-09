@@ -1,15 +1,112 @@
 <script lang="ts">
-	import type { ExtensionInfo } from '$lib/api';
-	// TODO: Fetching Data from repo
-	import { extensions_from_online } from '$lib/utils';
-	import { Modal } from '@skeletonlabs/skeleton-svelte';
-	import { Download, Settings } from 'lucide-svelte';
+	import api from '$lib/api';
+	import { Modal, Popover } from '@skeletonlabs/skeleton-svelte';
+	import { Circle, Download, Settings } from 'lucide-svelte';
+	import { handle_promise } from '$lib/toaster';
 
-	let { already_downloaded = $bindable() }: { already_downloaded: ExtensionInfo[] } = $props();
+	let { already_installed = $bindable() }: { already_installed: api.ExtensionInfo[] } = $props();
 	let open = $state(false);
+	let popupContent: HTMLDivElement;
+	let popupOpen = $state(false);
+	let downloading: Record<string, boolean> = $state({});
+
+	let extensions: 'fetching' | api.ExtensionManifest[] = 'fetching';
+	async function fetchExtensions() {
+		extensions = await handle_promise(api.fetch_online_extensions());
+	}
+	fetchExtensions();
+
+	let needle = $state('');
+	let showInstalled = $state(true);
+	let showNotInstalled = $state(true);
+	let filtered: 'fetching' | api.ExtensionManifest[] = $derived.by(filter);
+
+	function filter() {
+		if (extensions != 'fetching') {
+			const lowerNeedle = needle.toLowerCase();
+
+			function filter_installed(ext: api.ExtensionManifest): boolean {
+				const isInstalled = already_installed.some((e) => e.manifest.id === ext.id);
+				if (isInstalled && !showInstalled) return false;
+				if (!isInstalled && !showNotInstalled) return false;
+				return true;
+			}
+
+			// If no search term, just filter by installed flags and preserve order
+			if (!needle) {
+				return extensions.filter((ext) => filter_installed(ext));
+			}
+
+			type Ranked = { ext: api.ExtensionManifest; priority: number; idx: number };
+
+			const ranked: Ranked[] = extensions.map((ext, idx) => {
+				const name = ext.name.toLowerCase();
+				const desc = ext.description.toLowerCase();
+				const author = ext.author.toLowerCase();
+
+				let priority: number;
+
+				if (name === lowerNeedle) {
+					// 1) exact match of title
+					priority = 1;
+				} else if (name.startsWith(lowerNeedle)) {
+					// 2) starting match of title
+					priority = 2;
+				} else if (name.includes(lowerNeedle)) {
+					// 3) matching any part of the title
+					priority = 3;
+				} else if (desc.includes(lowerNeedle)) {
+					// 4) matching any part of the description
+					priority = 4;
+				} else if (author.includes(lowerNeedle)) {
+					// 5) matching any part of the author
+					priority = 5;
+				} else {
+					// no match → drop
+					priority = Number.POSITIVE_INFINITY;
+				}
+
+				return { ext, priority, idx };
+			});
+
+			return (
+				ranked
+					// drop non‐matches
+					.filter(({ priority }) => priority !== Number.POSITIVE_INFINITY)
+					// filter by installed/not‐installed flags
+					.filter(({ ext }) => filter_installed(ext))
+					// sort by priority, then original index to stabilize ties
+					.sort((a, b) => a.priority - b.priority || a.idx - b.idx)
+					// return only the manifests
+					.map(({ ext }) => ext)
+			);
+		} else {
+			return 'fetching';
+		}
+	}
+
+	async function download(extension_manifest: api.ExtensionManifest) {
+		const id = extension_manifest.id;
+		downloading[id] = true;
+		try {
+			const installed = await handle_promise(
+				api.download_and_install_extension(extension_manifest)
+			);
+			already_installed.push(installed);
+		} finally {
+			downloading[id] = false;
+		}
+	}
+
+	function popupClose() {
+		popupOpen = false;
+	}
 
 	function modalClose() {
-		open = false;
+		popupClose();
+		setTimeout(() => {
+			open = false;
+		}, 1);
 	}
 </script>
 
@@ -17,7 +114,7 @@
 	{open}
 	onOpenChange={(e) => (open = e.open)}
 	triggerBase=""
-	contentBase="card preset-tonal p-4 gap-2 shadow-xl max-w-screen-sm max-h-full grid grid-rows-[35px_1fr_35px] min-h-0"
+	contentBase="card preset-tonal p-4 gap-2 shadow-xl max-w-screen-sm h-full w-full grid grid-rows-[35px_1fr_35px] min-h-0 z-[9]"
 	backdropClasses="backdrop-blur-sm rounded"
 >
 	{#snippet trigger()}
@@ -27,32 +124,76 @@
 	{/snippet}
 	{#snippet content()}
 		<header class="input-group grid-cols-[1fr_auto]">
-			<!-- TODO: Real Searching && Sorting -->
-			<input class="ig-input rounded-l" type="text" placeholder="Search..." />
-			<!-- TODO: Popup -->
-			<button class="ig-btn preset-tonal" title="Username already in use.">
-				<Settings size={16} />
-			</button>
+			<input bind:value={needle} class="ig-input rounded-l" type="text" placeholder="Search..." />
+			<Popover
+				open={popupOpen}
+				onOpenChange={(e) => (popupOpen = e.open)}
+				positioning={{ placement: 'bottom' }}
+				triggerBase="ig-btn preset-tonal h-full popup-content"
+				contentBase="card preset-glass-neutral p-4 space-y-2 max-w-[240px] z-[999]"
+				zIndex="999"
+				arrow
+				arrowBackground="preset-glass-neutral"
+				closeOnInteractOutside={false}
+			>
+				{#snippet trigger()}
+					<Settings size={16} />
+				{/snippet}
+				{#snippet content()}
+					<button
+						class="btn {showInstalled ? 'preset-filled preset-outlined' : 'preset-outlined'} w-full"
+						onclick={() => (showInstalled = !showInstalled)}>Show Installed</button
+					>
+					<button
+						class="btn {showNotInstalled
+							? 'preset-filled preset-outlined'
+							: 'preset-outlined'} w-full"
+						onclick={() => (showNotInstalled = !showNotInstalled)}>Show Not Installed</button
+					>
+					<button class="btn preset-tonal w-full" onclick={popupClose}>Close</button>
+				{/snippet}
+			</Popover>
 		</header>
 		<article class="overflow-y-scroll min-h-0 space-y-4">
-			{#each extensions_from_online as extension (extension.id)}
-				{@const downloaded = !!already_downloaded.find((e) => e.manifest.id == extension.id)}
-				<li class="p-4 card preset-tonal grid sm:grid-cols-[1fr_auto] gap-4 items-center">
-					<div>
-						<h5 class="h5">{extension.name}</h5>
-						<p class="text-sm opacity-70 mt-1">{extension.description}</p>
-						<p class="text-xs mt-2">Author: {extension.author}</p>
-						<p class="text-xs mt-1">Current Version: {extension.version}</p>
-					</div>
-					<button class="btn preset-filled-success-500" disabled={downloaded} onclick={() => {}}>
-						{#if downloaded}
-							Downloaded
-						{:else}
-							Download
-						{/if}
-					</button>
-				</li>
-			{/each}
+			{#if filtered == 'fetching'}
+				<p class="opacity-70 italic p-2">Fetching extension metadata...</p>
+			{:else}
+				{#each filtered as extension_manifest (extension_manifest.id)}
+					{@const installed = !!already_installed.find(
+						(e) => e.manifest.id == extension_manifest.id
+					)}
+					<li class="p-4 card preset-tonal grid sm:grid-cols-[1fr_auto] gap-4 items-center">
+						<div>
+							<div class="flex justify-between items-center">
+								<h5 class="h5">{extension_manifest.name}</h5>
+								<span class="badge preset-filled-secondary-500">{extension_manifest.version}</span>
+							</div>
+							<p class="text-sm opacity-70 mt-1">{extension_manifest.description}</p>
+							<p class="text-xs mt-2">By {extension_manifest.author}</p>
+						</div>
+						<button
+							class="btn preset-filled-success-500"
+							disabled={installed || downloading[extension_manifest.id]}
+							title={downloading[extension_manifest.id]
+								? 'Downloading…'
+								: installed
+									? 'Already Installed'
+									: 'Download'}
+							onclick={() => download(extension_manifest)}
+						>
+							{#if downloading[extension_manifest.id]}
+								<Circle class="animate-ring-indeterminate size-4" /> Downloading...
+							{:else if installed}
+								Installed
+							{:else}
+								Download
+							{/if}
+						</button>
+					</li>
+				{:else}
+					<p class="opacity-70 px-1 italic">Search query returned no results...</p>
+				{/each}
+			{/if}
 		</article>
 		<footer class="flex justify-end">
 			<button type="button" class="btn preset-tonal" onclick={modalClose}>Close</button>

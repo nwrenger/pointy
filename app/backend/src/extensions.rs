@@ -4,7 +4,7 @@ use std::{
     path::PathBuf,
 };
 
-use flate2::write::GzDecoder;
+use flate2::read::GzDecoder;
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -15,6 +15,9 @@ use crate::{
     error::{self, Error},
     AppState,
 };
+
+pub const EXTENSIONS_URL: &str =
+    "https://raw.githubusercontent.com/nwrenger/pointy-extensions/refs/heads/main/extensions.json";
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ExtensionManifest {
@@ -46,7 +49,10 @@ pub struct ExtensionInfo {
 }
 
 /// Returns the extension info of all extensions
-pub fn info_extensions(app_state: State<'_, AppState>) -> error::Result<Vec<ExtensionInfo>> {
+#[tauri::command]
+pub fn get_installed_extensions(
+    app_state: State<'_, AppState>,
+) -> error::Result<Vec<ExtensionInfo>> {
     let extensions_path = app_state.extensions_path.clone();
     let config = app_state.config.read()?.clone();
     let enabled = config.enabled;
@@ -55,29 +61,30 @@ pub fn info_extensions(app_state: State<'_, AppState>) -> error::Result<Vec<Exte
     let dirs = extensions_path.read_dir()?;
 
     let mut extensions = Vec::new();
-    let mut paths: Vec<PathBuf> = dirs.filter_map(|e| Some(e.ok()?.path())).collect();
-    paths.sort();
+    let paths: Vec<PathBuf> = dirs.filter_map(|e| Some(e.ok()?.path())).collect();
 
     for path in paths {
         if path.is_dir() {
             let manifest_path = extensions_path.join(&path).join("manifest.json");
 
-            let manifest_data = std::fs::read_to_string(&manifest_path)?;
-            let manifest: ExtensionManifest = serde_json::from_str(&manifest_data)?;
+            if manifest_path.exists() {
+                let manifest_data = std::fs::read_to_string(&manifest_path)?;
+                let manifest: ExtensionManifest = serde_json::from_str(&manifest_data)?;
 
-            let icon_path = extensions_path.join(&path).join("icon.svg");
+                let icon_path = extensions_path.join(&path).join("icon.svg");
 
-            extensions.push(ExtensionInfo {
-                manifest,
-                icon_path,
-                enabled: enabled.contains(
-                    &path
-                        .file_name()
-                        .unwrap_or_default()
-                        .to_string_lossy()
-                        .to_string(),
-                ),
-            });
+                extensions.push(ExtensionInfo {
+                    manifest,
+                    icon_path,
+                    enabled: enabled.contains(
+                        &path
+                            .file_name()
+                            .unwrap_or_default()
+                            .to_string_lossy()
+                            .to_string(),
+                    ),
+                });
+            }
         }
     }
 
@@ -102,10 +109,18 @@ fn sort_by_order(v: &mut [ExtensionInfo], ordered: &[String]) {
     });
 }
 
+/// Fetches the online extension manifests.
+#[tauri::command]
+pub async fn fetch_online_extensions() -> error::Result<Vec<ExtensionManifest>> {
+    let res = reqwest::get(EXTENSIONS_URL).await?;
+    let extensions: Vec<ExtensionManifest> = res.json().await?;
+    Ok(extensions)
+}
+
 /// Emits an extension update to the main window.
 pub fn emit_extensions_update(app: &AppHandle) -> error::Result<()> {
     let app_state = app.state::<AppState>();
-    let extensions = info_extensions(app_state)?;
+    let extensions = get_installed_extensions(app_state)?;
 
     if let Some(main_window) = app.get_webview_window("main") {
         main_window.emit("update-extensions", extensions)?;
@@ -162,7 +177,7 @@ pub async fn install_extension(
     bytes: Vec<u8>,
     app_state: State<'_, AppState>,
 ) -> error::Result<()> {
-    let extension_directory = app_state.extensions_path.join(&extension_id);
+    let extension_directory = app_state.extensions_path.join(extension_id);
     let tmp = std::env::temp_dir().join(format!("{extension_id}.tar.gz"));
 
     // empty extension directory if it exists
@@ -195,6 +210,15 @@ pub async fn delete_extension(extension_id: String, app: AppHandle) -> error::Re
     if extension_directory.exists() {
         fs::remove_dir_all(&extension_directory)?;
     }
+
+    // Remove from config
+    let mut config = app_state.config.write()?;
+
+    config.enabled.retain(|f| f != &extension_id);
+    config.ordered.retain(|f| f != &extension_id);
+
+    drop(config);
+
     emit_extensions_update(&app)?;
 
     Ok(())

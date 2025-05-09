@@ -1,23 +1,23 @@
 <script lang="ts">
-	import { getCurrentWindow, LogicalSize, Window } from '@tauri-apps/api/window';
-	import { run_extension, read_to_string, type ExtensionInfo, get_extensions } from '$lib/api';
-
+	import api from '$lib/api';
+	import { getCurrentWindow, LogicalSize } from '@tauri-apps/api/window';
+	import { handle_promise } from '$lib/toaster';
 	let current_window = getCurrentWindow();
 
-	let items: ExtensionInfo[] = $state([]);
-	function setItems(allExtensions: ExtensionInfo[]): void {
+	let items: api.ExtensionInfo[] = $state([]);
+	function setItems(allExtensions: api.ExtensionInfo[]): void {
 		items = allExtensions.filter((extension) => extension.enabled);
 	}
 
 	async function loadInitialItems(): Promise<void> {
-		const e = await get_extensions();
+		const e = await handle_promise(api.get_installed_extensions());
 		setItems(e);
 	}
 	loadInitialItems();
 
 	// Update Items on window event
 	current_window.listen('update-extensions', ({ payload }) => {
-		setItems(payload as ExtensionInfo[]);
+		setItems(payload as api.ExtensionInfo[]);
 	});
 
 	const buttonSize = 33;
@@ -28,7 +28,7 @@
 
 	current_window.listen('select-option', async () => {
 		if (current_option) {
-			await run_extension(current_option);
+			await handle_promise(api.run_extension(current_option));
 			current_option = undefined;
 		}
 	});
@@ -83,7 +83,7 @@
 							   rotate(${-angle}deg);
 				`}
 			>
-				{#await read_to_string(item.icon_path) then contents}
+				{#await handle_promise(api.read_to_string(item.icon_path)) then contents}
 					<span class="cursor-pointer">
 						{@html contents}
 					</span>

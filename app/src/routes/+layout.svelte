@@ -1,5 +1,7 @@
 <script lang="ts">
+	import { Toaster } from '@skeletonlabs/skeleton-svelte';
 	import { overrideItemIdKeyNameBeforeInitialisingDndZones } from 'svelte-dnd-action';
+	import { toaster } from '$lib/toaster';
 	import '../app.css';
 
 	let { children } = $props();
@@ -11,6 +13,8 @@
 		e.preventDefault();
 	}
 </script>
+
+<Toaster {toaster}></Toaster>
 
 <svelte:document oncontextmenu={onContextMenu} />
 

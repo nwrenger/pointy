@@ -5,6 +5,7 @@ use serde::Serialize;
 pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug, Serialize)]
+#[serde(tag = "kind", content = "value")]
 pub enum Error {
     /// Lock is poisoned
     PoisonedLock,

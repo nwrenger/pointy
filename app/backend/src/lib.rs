@@ -8,7 +8,8 @@ use std::{ffi::CString, fs, path::PathBuf, str::FromStr, sync::RwLock};
 use config::{change_config, get_config, load_config, persist_config, set_autolaunch, Config};
 use error::Error;
 use extensions::{
-    delete_extension, download_and_install_extension, info_extensions, ExtensionInfo,
+    delete_extension, download_and_install_extension, fetch_online_extensions,
+    get_installed_extensions,
 };
 use libloading::{Library, Symbol};
 use pointy_api::device_query::{DeviceQuery, DeviceState};
@@ -44,12 +45,6 @@ impl AppState {
 #[tauri::command]
 fn get_version() -> &'static str {
     PKG_VERSION
-}
-
-/// Get the extensions. Use the event `update-extensions` for listening to updates.
-#[tauri::command]
-fn get_extensions(app_state: State<'_, AppState>) -> error::Result<Vec<ExtensionInfo>> {
-    info_extensions(app_state)
 }
 
 /// Runs a specified extension. It loads the appropriate dynamic library
@@ -233,7 +228,8 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             get_version,
-            get_extensions,
+            get_installed_extensions,
+            fetch_online_extensions,
             run_extension,
             download_and_install_extension,
             delete_extension,

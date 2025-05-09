@@ -1,6 +1,6 @@
 [package]
 name = "pointy"
-version = "0.1.5"
+version = "0.2.0"
 description = "The clipboard extension everybody needs."
 authors = ["nils@wrenger.net"]
 edition = "2021"

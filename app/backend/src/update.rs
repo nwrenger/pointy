@@ -4,9 +4,10 @@ use tauri_plugin_updater::UpdaterExt;
 use crate::{
     error,
     extensions::{
-        download_extension, download_extension_latest, emit_extensions_update, install_extension,
+        download_extension, download_extension_latest, emit_extensions_update,
+        get_installed_extensions, install_extension,
     },
-    get_extensions, AppState,
+    AppState,
 };
 
 use tracing::{error, info};
@@ -46,7 +47,7 @@ pub async fn update_app(app: AppHandle) -> tauri_plugin_updater::Result<()> {
 #[tauri::command]
 pub async fn update_extensions(app: AppHandle) -> error::Result<()> {
     let app_state = app.state::<AppState>();
-    let extensions = get_extensions(app_state)?;
+    let extensions = get_installed_extensions(app_state)?;
 
     let mut handles = Vec::with_capacity(extensions.len());
     for extension in extensions {
