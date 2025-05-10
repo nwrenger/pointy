@@ -226,12 +226,15 @@ pub async fn delete_extension(id: String, app: AppHandle) -> error::Result<()> {
     }
 
     // Remove from config
-    let mut config = app_state.config.write()?;
+    {
+        let mut config = app_state.config.write()?;
 
-    config.enabled.retain(|f| f != &id);
-    config.ordered.retain(|f| f != &id);
+        config.enabled.retain(|f| f != &id);
+        config.ordered.retain(|f| f != &id);
 
-    drop(config);
+        // persist changes
+        fs::write(&app_state.config_path, serde_json::to_string(&*config)?)?;
+    }
 
     emit_extensions_update(&app)?;
 
