@@ -20,6 +20,7 @@ pointy is a very useful clipboard extension everybody needs. It's currently bein
       - [x] using the `pointy-extensions` json file
       - [x] backend && working functions
     - [ ] Create a template repo containing a publish action which builds for all available plattforms
+- [ ] Improve errors-ui on selection wheel
 - [ ] Create project website (for downloading and extension docs)
 - [x] Add settings with: editing shortcut and autostart option
 - [x] Add AppState for Config an AppData Path
