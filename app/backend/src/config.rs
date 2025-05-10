@@ -39,7 +39,7 @@ pub fn get_config(app_state: State<'_, AppState>) -> error::Result<Config> {
     Ok(config.clone())
 }
 
-/// Changes stored config and safes it to disk. Also applies changes of the config to the app
+/// Changes stored config and saves it to disk. Also applies changes of the config to the app
 #[tauri::command]
 pub fn change_config(
     new_config: Config,

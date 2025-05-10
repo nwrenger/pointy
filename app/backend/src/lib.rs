@@ -218,7 +218,7 @@ pub fn run() {
             handle.plugin(tauri_plugin_autostart::Builder::new().build())?;
             set_autolaunch(&config, &handle)?;
 
-            // Safe state
+            // Save state
             app.manage(AppState::new(config_path, extensions_path, config));
 
             info!("application is setup");
