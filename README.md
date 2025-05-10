@@ -12,16 +12,16 @@ pointy is a very useful clipboard extension everybody needs. It's currently bein
   - [x] Auto updating of already downloaded extensions
     - [x] Add publish action for in-house extensions
     - [x] Move from `zip` to `tar.gz`
-  - [ ] Online Hosting on Github (or something similar) with linking of setting option "Download Extensions" and good ui for easy download
+  - [x] Online Hosting on Github (or something similar) with linking of setting option "Download Extensions" and good ui for easy download
     - [x] Create for that a `pointy-extensions` repo with a big json file containing all extensions
-      - [ ] The ability to add new ones via a bot using gh issues
+      - [x] The ability to add new ones via a bot using gh pr's
     - [x] Implement downloading in the settings menu with view of all extensions
       - [x] frontend design
       - [x] using the `pointy-extensions` json file
       - [x] backend && working functions
     - [ ] Create a template repo containing a publish action which builds for all available plattforms
 - [ ] Improve errors-ui on selection wheel
-- [ ] Create project website (for downloading and extension docs)
+- [ ] Create project website (for downloading, extension docs and developer policies)
 - [x] Add settings with: editing shortcut and autostart option
 - [x] Add AppState for Config an AppData Path
 - [x] Add initial app config by reading config to app setup and State
