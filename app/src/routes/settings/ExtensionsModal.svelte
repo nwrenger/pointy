@@ -133,7 +133,7 @@
 				contentBase="card preset-glass-neutral p-4 space-y-2 max-w-[240px] z-[999]"
 				zIndex="999"
 				arrow
-				arrowBackground="preset-glass-neutral"
+				arrowBackground="preset-glass-neutral!"
 				closeOnInteractOutside={false}
 			>
 				{#snippet trigger()}
