@@ -1,7 +1,7 @@
 <script lang="ts">
 	import api from '$lib/api';
-	import { Modal, Popover } from '@skeletonlabs/skeleton-svelte';
-	import { Circle, Download, Settings } from 'lucide-svelte';
+	import { Modal } from '@skeletonlabs/skeleton-svelte';
+	import { Circle, Download } from 'lucide-svelte';
 	import { handle_promise } from '$lib/toaster';
 
 	let { already_installed = $bindable() }: { already_installed: api.ExtensionInfo[] } = $props();
@@ -17,8 +17,7 @@
 	fetchExtensions();
 
 	let needle = $state('');
-	let showInstalled = $state(true);
-	let showNotInstalled = $state(true);
+	let showOptions: 'all' | 'installed' | 'not-installed' = $state('all');
 	let filtered: 'fetching' | api.ExtensionManifest[] = $derived.by(filter);
 
 	function filter() {
@@ -27,9 +26,14 @@
 
 			function filter_installed(ext: api.ExtensionManifest): boolean {
 				const isInstalled = already_installed.some((e) => e.manifest.id === ext.id);
-				if (isInstalled && !showInstalled) return false;
-				if (!isInstalled && !showNotInstalled) return false;
-				return true;
+				if (showOptions === 'all') {
+					return true;
+				} else if (showOptions === 'installed' && isInstalled) {
+					return true;
+				} else if (showOptions === 'not-installed' && !isInstalled) {
+					return true;
+				}
+				return false;
 			}
 
 			// If no search term, just filter by installed flags and preserve order
@@ -125,34 +129,11 @@
 	{#snippet content()}
 		<header class="input-group grid-cols-[1fr_auto]">
 			<input bind:value={needle} class="ig-input rounded-l" type="text" placeholder="Search..." />
-			<Popover
-				open={popupOpen}
-				onOpenChange={(e) => (popupOpen = e.open)}
-				positioning={{ placement: 'bottom' }}
-				triggerBase="ig-btn preset-tonal h-full popup-content"
-				contentBase="card preset-glass-neutral p-4 space-y-2 max-w-[240px] z-[999]"
-				zIndex="999"
-				arrow
-				arrowBackground="preset-glass-neutral!"
-				closeOnInteractOutside={false}
-			>
-				{#snippet trigger()}
-					<Settings size={16} />
-				{/snippet}
-				{#snippet content()}
-					<button
-						class="btn {showInstalled ? 'preset-filled preset-outlined' : 'preset-outlined'} w-full"
-						onclick={() => (showInstalled = !showInstalled)}>Show Installed</button
-					>
-					<button
-						class="btn {showNotInstalled
-							? 'preset-filled preset-outlined'
-							: 'preset-outlined'} w-full"
-						onclick={() => (showNotInstalled = !showNotInstalled)}>Show Not Installed</button
-					>
-					<button class="btn preset-tonal w-full" onclick={popupClose}>Close</button>
-				{/snippet}
-			</Popover>
+			<select bind:value={showOptions} class="ig-select rounded-r">
+				<option selected value="all">View All</option>
+				<option value="installed">Installed</option>
+				<option value="not-installed">Not Installed</option>
+			</select>
 		</header>
 		<article class="overflow-y-scroll min-h-0 space-y-4">
 			{#if filtered == 'fetching'}
