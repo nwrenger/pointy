@@ -1,12 +1,12 @@
 <script lang="ts">
-	import { Switch } from '@skeletonlabs/skeleton-svelte';
+	import { Switch, Toaster } from '@skeletonlabs/skeleton-svelte';
 	import { flip } from 'svelte/animate';
 	import { dragHandle, dragHandleZone, type DndEvent } from 'svelte-dnd-action';
 	import { AlignJustify, Circle, RefreshCw, Trash2 } from 'lucide-svelte';
 	import { getCurrentWindow, Window } from '@tauri-apps/api/window';
 	import { areObjectsEqual, deepClone } from '$lib/utils';
 	import ExtensionsModal from './ExtensionsModal.svelte';
-	import { handle_promise } from '$lib/toaster';
+	import { handle_promise, toaster } from '$lib/toaster';
 	import api from '$lib/api';
 
 	const defaultFlipDurationMs = 300;
@@ -15,8 +15,8 @@
 
 	let config: api.Config | undefined = $state();
 	let edited_config: api.Config | undefined = $state();
-	let extensions: api.ExtensionInfo[] = $state([]);
-	let edited_extensions: api.ExtensionInfo[] = $state([]);
+	let extensions: api.InstalledExtensionInfo[] = $state([]);
+	let edited_extensions: api.InstalledExtensionInfo[] = $state([]);
 
 	// Initialize config
 	async function init() {
@@ -37,9 +37,9 @@
 		let main_window = await Window.getByLabel('main');
 		if (main_window) {
 			main_window.listen('update-extensions', ({ payload }) => {
-				let payload_typed = payload as api.ExtensionInfo[];
+				let payload_typed = payload as api.InstalledExtensionInfo[];
 
-				const updateMap = new Map<string, api.ExtensionInfo>();
+				const updateMap = new Map<string, api.InstalledExtensionInfo>();
 				for (const e of payload_typed) {
 					updateMap.set(e.manifest.id, e);
 				}
@@ -126,6 +126,8 @@
 		current_window.hide();
 	}
 </script>
+
+<Toaster {toaster}></Toaster>
 
 <div class="h-full preset-glass-neutral rounded grid grid-rows-[32px_auto_56px]">
 	<!-- Header -->
