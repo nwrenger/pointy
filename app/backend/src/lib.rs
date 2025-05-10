@@ -5,7 +5,7 @@ pub mod update;
 
 use std::{ffi::CString, fs, path::PathBuf, str::FromStr, sync::RwLock};
 
-use config::{change_config, get_config, load_config, persist_config, set_autolaunch, Config};
+use config::{change_config, get_config, load_config, set_autolaunch, Config};
 use error::Error;
 use extensions::{
     delete_extension, download_and_install_extension, fetch_online_extensions,
@@ -239,11 +239,6 @@ pub fn run() {
             change_config,
             read_to_string
         ])
-        .build(tauri::generate_context!())
-        .expect("error while running tauri application")
-        .run(|app, event| {
-            if let tauri::RunEvent::Exit = event {
-                persist_config(app).unwrap();
-            }
-        });
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
 }

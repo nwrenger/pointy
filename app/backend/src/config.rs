@@ -1,7 +1,7 @@
 use std::{fs, path::PathBuf, str::FromStr};
 
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, State};
 use tauri_plugin_autostart::ManagerExt;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
 
@@ -39,14 +39,15 @@ pub fn get_config(app_state: State<'_, AppState>) -> error::Result<Config> {
     Ok(config.clone())
 }
 
-/// Changes stored config and applies changes of the config to the app
+/// Changes stored config and safes it to disk. Also applies changes of the config to the app
 #[tauri::command]
 pub fn change_config(
     new_config: Config,
     app: AppHandle,
     app_state: State<'_, AppState>,
 ) -> error::Result<Config> {
-    let old_config = app_state.config.read()?;
+    let mut config = app_state.config.write()?;
+    let old_config = config.clone();
 
     // Check if shortcut has changed
     if old_config.shortcut != new_config.shortcut {
@@ -63,20 +64,15 @@ pub fn change_config(
         set_autolaunch(&new_config, &app)?;
     }
 
-    let old_config_clone = old_config.clone();
-
-    drop(old_config);
-
     // Save to app state
-    let mut config = app_state.config.write()?;
     *config = new_config.clone();
-
     drop(config);
 
-    // Check if enabled changed, if so emit an extension update
-    if new_config.enabled != old_config_clone.enabled
-        || new_config.ordered != old_config_clone.ordered
-    {
+    // Persist config
+    fs::write(&app_state.config_path, serde_json::to_string(&new_config)?)?;
+
+    // Check if enabled or ordered changed, if so emit an extension update
+    if new_config.enabled != old_config.enabled || new_config.ordered != old_config.ordered {
         emit_extensions_update(&app)?;
     }
 
@@ -95,16 +91,6 @@ pub fn set_autolaunch(
     } else if autostart_manager.is_enabled()? {
         autostart_manager.disable()?;
     }
-
-    Ok(())
-}
-
-/// Persists the app config by saving it to the disk
-pub fn persist_config(app: &AppHandle) -> error::Result<()> {
-    let app_state: State<'_, AppState> = app.state();
-    let config = app_state.config.read()?;
-
-    fs::write(&app_state.config_path, serde_json::to_string(&*config)?)?;
 
     Ok(())
 }
