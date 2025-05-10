@@ -4,8 +4,8 @@
 	import { handle_promise } from '$lib/toaster';
 	let current_window = getCurrentWindow();
 
-	let items: api.ExtensionInfo[] = $state([]);
-	function setItems(allExtensions: api.ExtensionInfo[]): void {
+	let items: api.InstalledExtensionInfo[] = $state([]);
+	function setItems(allExtensions: api.InstalledExtensionInfo[]): void {
 		items = allExtensions.filter((extension) => extension.enabled);
 	}
 
@@ -17,7 +17,7 @@
 
 	// Update Items on window event
 	current_window.listen('update-extensions', ({ payload }) => {
-		setItems(payload as api.ExtensionInfo[]);
+		setItems(payload as api.InstalledExtensionInfo[]);
 	});
 
 	const buttonSize = 33;

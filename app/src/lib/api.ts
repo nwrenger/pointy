@@ -23,7 +23,15 @@ namespace api {
 		latest_url: string;
 	}
 
-	export interface ExtensionInfo {
+	export interface AvailableExtension {
+		id: string;
+		name: string;
+		author: string;
+		description: string;
+		latest_url: string;
+	}
+
+	export interface InstalledExtensionInfo {
 		manifest: ExtensionManifest;
 		icon_path: string;
 		enabled: boolean;
@@ -40,11 +48,11 @@ namespace api {
 		return await invoke('get_version');
 	}
 
-	export async function get_installed_extensions(): Promise<ExtensionInfo[]> {
+	export async function get_installed_extensions(): Promise<InstalledExtensionInfo[]> {
 		return await invoke('get_installed_extensions');
 	}
 
-	export async function fetch_online_extensions(): Promise<ExtensionManifest[]> {
+	export async function fetch_online_extensions(): Promise<AvailableExtension[]> {
 		return await invoke('fetch_online_extensions');
 	}
 
@@ -55,16 +63,18 @@ namespace api {
 	}
 
 	export async function download_and_install_extension(
-		extension_manifest: ExtensionManifest
-	): Promise<ExtensionInfo> {
+		id: string,
+		latest_url: string
+	): Promise<InstalledExtensionInfo> {
 		return await invoke('download_and_install_extension', {
-			extensionManifest: extension_manifest
+			id: id,
+			latestUrl: latest_url
 		});
 	}
 
-	export async function delete_extension(extension_id: string): Promise<void> {
+	export async function delete_extension(id: string): Promise<void> {
 		return await invoke('delete_extension', {
-			extensionId: extension_id
+			id: id
 		});
 	}
 

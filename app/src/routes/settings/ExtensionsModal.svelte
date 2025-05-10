@@ -4,27 +4,31 @@
 	import { Circle, Download } from 'lucide-svelte';
 	import { handle_promise } from '$lib/toaster';
 
-	let { already_installed = $bindable() }: { already_installed: api.ExtensionInfo[] } = $props();
+	let { already_installed = $bindable() }: { already_installed: api.InstalledExtensionInfo[] } =
+		$props();
 	let open = $state(false);
-	let popupContent: HTMLDivElement;
-	let popupOpen = $state(false);
 	let downloading: Record<string, boolean> = $state({});
 
-	let extensions: 'fetching' | api.ExtensionManifest[] = 'fetching';
+	let extensions: api.AvailableExtension[] | null = $state(null);
 	async function fetchExtensions() {
+		extensions = null;
 		extensions = await handle_promise(api.fetch_online_extensions());
 	}
-	fetchExtensions();
+
+	$effect(() => {
+		if (open) fetchExtensions();
+	});
 
 	let needle = $state('');
 	let showOptions: 'all' | 'installed' | 'not-installed' = $state('all');
-	let filtered: 'fetching' | api.ExtensionManifest[] = $derived.by(filter);
+	let filtered: api.AvailableExtension[] | null = $derived.by(filter);
 
 	function filter() {
-		if (extensions != 'fetching') {
+		console.log(extensions);
+		if (extensions != null) {
 			const lowerNeedle = needle.toLowerCase();
 
-			function filter_installed(ext: api.ExtensionManifest): boolean {
+			function filter_installed(ext: api.AvailableExtension): boolean {
 				const isInstalled = already_installed.some((e) => e.manifest.id === ext.id);
 				if (showOptions === 'all') {
 					return true;
@@ -41,7 +45,7 @@
 				return extensions.filter((ext) => filter_installed(ext));
 			}
 
-			type Ranked = { ext: api.ExtensionManifest; priority: number; idx: number };
+			type Ranked = { ext: api.AvailableExtension; priority: number; idx: number };
 
 			const ranked: Ranked[] = extensions.map((ext, idx) => {
 				const name = ext.name.toLowerCase();
@@ -85,16 +89,16 @@
 					.map(({ ext }) => ext)
 			);
 		} else {
-			return 'fetching';
+			return null;
 		}
 	}
 
-	async function download(extension_manifest: api.ExtensionManifest) {
-		const id = extension_manifest.id;
+	async function download(ext: api.AvailableExtension) {
+		const id = ext.id;
 		downloading[id] = true;
 		try {
 			const installed = await handle_promise(
-				api.download_and_install_extension(extension_manifest)
+				api.download_and_install_extension(id, ext.latest_url)
 			);
 			already_installed.push(installed);
 		} finally {
@@ -102,15 +106,8 @@
 		}
 	}
 
-	function popupClose() {
-		popupOpen = false;
-	}
-
 	function modalClose() {
-		popupClose();
-		setTimeout(() => {
-			open = false;
-		}, 1);
+		open = false;
 	}
 </script>
 
@@ -136,7 +133,7 @@
 			</select>
 		</header>
 		<article class="overflow-y-scroll min-h-0 space-y-4">
-			{#if filtered == 'fetching'}
+			{#if filtered == null}
 				<p class="opacity-70 italic p-2">Fetching extension metadata...</p>
 			{:else}
 				{#each filtered as extension_manifest (extension_manifest.id)}
@@ -145,10 +142,7 @@
 					)}
 					<li class="p-4 card preset-tonal grid sm:grid-cols-[1fr_auto] gap-4 items-center">
 						<div>
-							<div class="flex justify-between items-center">
-								<h5 class="h5">{extension_manifest.name}</h5>
-								<span class="badge preset-filled-secondary-500">{extension_manifest.version}</span>
-							</div>
+							<h5 class="h5">{extension_manifest.name}</h5>
 							<p class="text-sm opacity-70 mt-1">{extension_manifest.description}</p>
 							<p class="text-xs mt-2">By {extension_manifest.author}</p>
 						</div>

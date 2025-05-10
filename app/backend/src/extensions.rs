@@ -19,6 +19,7 @@ use crate::{
 pub const EXTENSIONS_URL: &str =
     "https://raw.githubusercontent.com/nwrenger/pointy-extensions/refs/heads/main/extensions.json";
 
+/// Extension metadata
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ExtensionManifest {
     pub id: String,
@@ -29,20 +30,33 @@ pub struct ExtensionManifest {
     pub latest_url: String,
 }
 
+/// Extension download information
+#[derive(Serialize, Deserialize)]
+pub struct AvailableExtension {
+    pub id: String,
+    pub name: String,
+    pub author: String,
+    pub description: String,
+    pub latest_url: String,
+}
+
+/// Latest releases of an extension
 #[derive(Deserialize)]
-pub struct ExtensionLatest {
+pub struct Latest {
     pub version: Version,
     pub assets: HashMap<String, Asset>,
 }
 
+/// A downloadable asset with checksum
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Asset {
     pub url: String,
     pub checksum: String,
 }
 
+/// All Infos about the current extension
 #[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct ExtensionInfo {
+pub struct InstalledExtensionInfo {
     pub manifest: ExtensionManifest,
     pub icon_path: PathBuf,
     pub enabled: bool,
@@ -52,7 +66,7 @@ pub struct ExtensionInfo {
 #[tauri::command]
 pub fn get_installed_extensions(
     app_state: State<'_, AppState>,
-) -> error::Result<Vec<ExtensionInfo>> {
+) -> error::Result<Vec<InstalledExtensionInfo>> {
     let extensions_path = app_state.extensions_path.clone();
     let config = app_state.config.read()?.clone();
     let enabled = config.enabled;
@@ -73,7 +87,7 @@ pub fn get_installed_extensions(
 
                 let icon_path = extensions_path.join(&path).join("icon.svg");
 
-                extensions.push(ExtensionInfo {
+                extensions.push(InstalledExtensionInfo {
                     manifest,
                     icon_path,
                     enabled: enabled.contains(
@@ -93,7 +107,7 @@ pub fn get_installed_extensions(
     Ok(extensions)
 }
 
-fn sort_by_order(v: &mut [ExtensionInfo], ordered: &[String]) {
+fn sort_by_order(v: &mut [InstalledExtensionInfo], ordered: &[String]) {
     let rank: HashMap<&str, usize> = ordered
         .iter()
         .enumerate()
@@ -111,9 +125,9 @@ fn sort_by_order(v: &mut [ExtensionInfo], ordered: &[String]) {
 
 /// Fetches the online extension manifests.
 #[tauri::command]
-pub async fn fetch_online_extensions() -> error::Result<Vec<ExtensionManifest>> {
+pub async fn fetch_online_extensions() -> error::Result<Vec<AvailableExtension>> {
     let res = reqwest::get(EXTENSIONS_URL).await?;
-    let extensions: Vec<ExtensionManifest> = res.json().await?;
+    let extensions: Vec<AvailableExtension> = res.json().await?;
     Ok(extensions)
 }
 
@@ -130,15 +144,15 @@ pub fn emit_extensions_update(app: &AppHandle) -> error::Result<()> {
 }
 
 /// Download extension latest of `latest_url`
-pub async fn download_extension_latest(latest_url: &String) -> error::Result<ExtensionLatest> {
+pub async fn download_extension_latest(latest_url: &String) -> error::Result<Latest> {
     let resp = reqwest::get(latest_url).await?;
-    let latest: ExtensionLatest = resp.json().await?;
+    let latest: Latest = resp.json().await?;
 
     Ok(latest)
 }
 
 /// Download extension assets
-pub async fn download_extension(extension_latest: &ExtensionLatest) -> error::Result<Vec<u8>> {
+pub async fn download_extension(extension_latest: &Latest) -> error::Result<Vec<u8>> {
     let key = current_platform_key();
 
     if let Some(asset) = extension_latest.assets.get(&key) {
@@ -173,12 +187,12 @@ pub fn current_platform_key() -> String {
 
 /// Install downloaded `bytes` to extensions folder by `extension_id`
 pub async fn install_extension(
-    extension_id: &String,
+    id: &String,
     bytes: Vec<u8>,
     app_state: State<'_, AppState>,
 ) -> error::Result<()> {
-    let extension_directory = app_state.extensions_path.join(extension_id);
-    let tmp = std::env::temp_dir().join(format!("{extension_id}.tar.gz"));
+    let extension_directory = app_state.extensions_path.join(id);
+    let tmp = std::env::temp_dir().join(format!("{id}.tar.gz"));
 
     // empty extension directory if it exists
     if extension_directory.exists() {
@@ -203,10 +217,10 @@ pub async fn install_extension(
 
 /// Delete extension by `extension_id`
 #[tauri::command]
-pub async fn delete_extension(extension_id: String, app: AppHandle) -> error::Result<()> {
+pub async fn delete_extension(id: String, app: AppHandle) -> error::Result<()> {
     let app_state = app.state::<AppState>();
 
-    let extension_directory = app_state.extensions_path.join(&extension_id);
+    let extension_directory = app_state.extensions_path.join(&id);
     if extension_directory.exists() {
         fs::remove_dir_all(&extension_directory)?;
     }
@@ -214,8 +228,8 @@ pub async fn delete_extension(extension_id: String, app: AppHandle) -> error::Re
     // Remove from config
     let mut config = app_state.config.write()?;
 
-    config.enabled.retain(|f| f != &extension_id);
-    config.ordered.retain(|f| f != &extension_id);
+    config.enabled.retain(|f| f != &id);
+    config.ordered.retain(|f| f != &id);
 
     drop(config);
 
@@ -227,14 +241,15 @@ pub async fn delete_extension(extension_id: String, app: AppHandle) -> error::Re
 /// Downloads and installs an extension
 #[tauri::command]
 pub async fn download_and_install_extension(
-    extension_manifest: ExtensionManifest,
+    id: String,
+    latest_url: String,
     app: AppHandle,
-) -> error::Result<ExtensionInfo> {
+) -> error::Result<InstalledExtensionInfo> {
     let app_state = app.state::<AppState>();
 
-    let latest = download_extension_latest(&extension_manifest.latest_url).await?;
+    let latest = download_extension_latest(&latest_url).await?;
     let bytes = download_extension(&latest).await?;
-    install_extension(&extension_manifest.id, bytes, app_state.clone()).await?;
+    install_extension(&id, bytes, app_state.clone()).await?;
 
     // Emit update
     emit_extensions_update(&app)?;
@@ -244,13 +259,15 @@ pub async fn download_and_install_extension(
     let config = app_state.config.read()?.clone();
     let enabled = config.enabled;
 
-    let icon_path = extensions_path
-        .join(&extension_manifest.id)
-        .join("icon.svg");
-    let this_enabled = enabled.contains(&extension_manifest.id);
+    let manifest_path = extensions_path.join(&id).join("manifest.json");
+    let manifest_data = std::fs::read_to_string(&manifest_path)?;
+    let manifest: ExtensionManifest = serde_json::from_str(&manifest_data)?;
 
-    Ok(ExtensionInfo {
-        manifest: extension_manifest,
+    let icon_path = extensions_path.join(&id).join("icon.svg");
+    let this_enabled = enabled.contains(&id);
+
+    Ok(InstalledExtensionInfo {
+        manifest,
         icon_path,
         enabled: this_enabled,
     })
