@@ -1,4 +1,4 @@
-use tauri::{AppHandle, Manager, State};
+use tauri::{async_runtime::JoinHandle, AppHandle, Manager, State};
 use tauri_plugin_updater::UpdaterExt;
 
 use crate::{
@@ -10,7 +10,7 @@ use crate::{
     AppState,
 };
 
-use tracing::{error, info};
+use tracing::info;
 
 /// Updates the whole app
 #[tauri::command]
@@ -53,16 +53,10 @@ pub async fn update_extensions(app: AppHandle) -> error::Result<()> {
     for extension in extensions {
         let app_handle = app.clone();
 
-        let handle = tauri::async_runtime::spawn(async move {
+        let handle: JoinHandle<error::Result<()>> = tauri::async_runtime::spawn(async move {
             let state: State<'_, AppState> = app_handle.state();
 
-            let latest = match download_extension_latest(&extension.manifest.latest_url).await {
-                Ok(latest) => latest,
-                Err(e) => {
-                    error!(id = %extension.manifest.id, %e);
-                    return;
-                }
-            };
+            let latest = download_extension_latest(&extension.manifest.latest_url).await?;
 
             // check for version
             if latest.version <= extension.manifest.version {
@@ -72,21 +66,17 @@ pub async fn update_extensions(app: AppHandle) -> error::Result<()> {
                     old = %extension.manifest.version,
                     "extension is up-to-date"
                 );
-                return;
+                return Ok(());
             }
 
-            let bytes = match download_extension(&latest).await {
-                Ok(bytes) => bytes,
-                Err(e) => {
-                    error!(id = %extension.manifest.id, %e);
-                    return;
-                }
-            };
+            let bytes = download_extension(&latest).await?;
 
             match install_extension(&extension.manifest.id, bytes, state).await {
                 Ok(()) => info!(id = %extension.manifest.id, "installed extension update"),
-                Err(e) => error!(id = %extension.manifest.id, %e, "failed to unpack extension"),
+                Err(e) => return Err(e),
             }
+
+            Ok(())
         });
 
         handles.push(handle);
@@ -94,7 +84,7 @@ pub async fn update_extensions(app: AppHandle) -> error::Result<()> {
 
     // Wait for all updating and return errors if any
     for h in handles {
-        h.await?;
+        h.await??;
     }
 
     emit_extensions_update(&app)?;

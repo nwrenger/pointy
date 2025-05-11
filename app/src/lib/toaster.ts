@@ -29,7 +29,7 @@ export function error_toast(message: string) {
 function error_msg(error: api.Error): string {
 	switch (error.kind) {
 		case 'PoisonedLock':
-			return 'Fatal Backend Error: A Mutex lock is poisoned.';
+			return 'Fatal Backend Error: An internal lock was poisoned.';
 		case 'Checksum':
 			return 'The checksum verification failed.';
 		case 'NoAssets':
@@ -47,7 +47,7 @@ function error_msg(error: api.Error): string {
 		case 'Tauri':
 			return `Tauri Runtime Error: ${error.value}`;
 		case 'Shortcut':
-			return `Global Shortcut Error: : ${error.value}`;
+			return `Global Shortcut Error: ${error.value}`;
 		case 'Autostart':
 			return `Autostart Configuration Error: ${error.value}`;
 		default:
