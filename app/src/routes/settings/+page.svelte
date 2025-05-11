@@ -2,7 +2,7 @@
 	import { Switch, Toaster } from '@skeletonlabs/skeleton-svelte';
 	import { flip } from 'svelte/animate';
 	import { dragHandle, dragHandleZone, type DndEvent } from 'svelte-dnd-action';
-	import { AlignJustify, Circle, RefreshCw, Trash2 } from 'lucide-svelte';
+	import { AlignJustify, Circle, Power, PowerOff, RefreshCw, Trash2 } from 'lucide-svelte';
 	import { getCurrentWindow, Window } from '@tauri-apps/api/window';
 	import { areObjectsEqual, deepClone } from '$lib/utils';
 	import ExtensionsModal from './ExtensionsModal.svelte';
@@ -236,23 +236,28 @@
 				>
 					{#each edited_extensions as extension (extension.icon_path)}
 						<div
-							class="flex w-full items-center space-x-2 preset-tonal border-b border-surface-200-800 last:border-0 py-4"
+							class="flex w-full items-center preset-tonal border-b border-surface-200-800 last:border-0 py-4"
 							animate:flip={{ duration: flipDurationMs }}
 						>
-							<div class="ps-3 p-1" use:dragHandle>
+							<div class="py-2 px-3" use:dragHandle>
 								<AlignJustify class="size-4" />
 							</div>
 							<div class="w-full items-center justify-between grid grid-cols-[auto_85px]">
 								<p class="truncate w-full">
 									{extension.manifest.name}
 								</p>
-								<div class="flex items-center space-x-4 pe-3 justify-end">
-									<input
-										class="checkbox"
-										type="checkbox"
-										checked={extension.enabled}
-										oninput={(e) => (extension.enabled = (e.target as HTMLInputElement).checked)}
-									/>
+								<div class="flex items-center space-x-2 pe-3 justify-end">
+									<button
+										class="btn-icon {extension.enabled ? 'preset-filled' : 'preset-glass-neutral'}"
+										title={extension.enabled ? 'Enabled' : 'Disabled'}
+										onclick={() => (extension.enabled = !extension.enabled)}
+									>
+										{#if extension.enabled}
+											<Power class="size-4" />
+										{:else}
+											<PowerOff class="size-4" />
+										{/if}
+									</button>
 									<button
 										class="btn-icon box-[none] flex preset-filled-error-500 z-10"
 										title={deleting[extension.manifest.id] ? 'Removing…' : 'Remove'}

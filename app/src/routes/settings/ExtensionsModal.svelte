@@ -1,7 +1,7 @@
 <script lang="ts">
 	import api from '$lib/api';
 	import { Modal } from '@skeletonlabs/skeleton-svelte';
-	import { Circle, Download } from 'lucide-svelte';
+	import { Download } from 'lucide-svelte';
 	import { handle_promise } from '$lib/toaster';
 
 	let { already_installed = $bindable() }: { already_installed: api.InstalledExtensionInfo[] } =
@@ -24,7 +24,6 @@
 	let filtered: api.AvailableExtension[] | null = $derived.by(filter);
 
 	function filter() {
-		console.log(extensions);
 		if (extensions != null) {
 			const lowerNeedle = needle.toLowerCase();
 
@@ -119,7 +118,7 @@
 	backdropClasses="backdrop-blur-sm rounded"
 >
 	{#snippet trigger()}
-		<button class="btn-icon preset-filled" title="Download - Not yet implemented">
+		<button class="btn-icon preset-filled" title="Download">
 			<Download class="size-4" />
 		</button>
 	{/snippet}
@@ -134,7 +133,7 @@
 		</header>
 		<article class="overflow-y-scroll min-h-0 space-y-4">
 			{#if filtered == null}
-				<p class="opacity-70 italic p-2">Fetching extension metadata...</p>
+				<p class="opacity-70 px-1 italic">Fetching extension metadata...</p>
 			{:else}
 				{#each filtered as extension_manifest (extension_manifest.id)}
 					{@const installed = !!already_installed.find(
@@ -150,14 +149,14 @@
 							class="btn preset-filled-success-500"
 							disabled={installed || downloading[extension_manifest.id]}
 							title={downloading[extension_manifest.id]
-								? 'Downloading…'
+								? 'Downloading'
 								: installed
 									? 'Already Installed'
 									: 'Download'}
 							onclick={() => download(extension_manifest)}
 						>
 							{#if downloading[extension_manifest.id]}
-								<Circle class="animate-ring-indeterminate size-4" /> Downloading...
+								Downloading
 							{:else if installed}
 								Installed
 							{:else}
