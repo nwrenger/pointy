@@ -49,17 +49,21 @@ pub fn change_config(
     let mut config = app_state.config.write()?;
     let old_config = config.clone();
 
-    // Check if shortcut has changed
+    // Only update when the shortcut string actually changed
     if old_config.shortcut != new_config.shortcut {
-        // Remove old shortcut
-        let old_shortcut = Shortcut::from_str(&old_config.shortcut)?;
-        app.global_shortcut().unregister(old_shortcut)?;
-
-        // Add new shortcut
+        // First, try registering the new shortcut.
+        // We register before unregistering the old one so that
+        // if the new shortcut is invalid or conflicts, the old shortcut
+        // remains active and the app stays functional.
         let new_shortcut = Shortcut::from_str(&new_config.shortcut)?;
         app.global_shortcut().register(new_shortcut)?;
+
+        // Now that the new shortcut is live, remove the old registration
+        let old_shortcut = Shortcut::from_str(&old_config.shortcut)?;
+        app.global_shortcut().unregister(old_shortcut)?;
     }
 
+    // Only update when autolaunch actually changed
     if new_config.autolaunch != old_config.autolaunch {
         set_autolaunch(&new_config, &app)?;
     }
@@ -71,7 +75,7 @@ pub fn change_config(
     // Persist config
     fs::write(&app_state.config_path, serde_json::to_string(&new_config)?)?;
 
-    // Check if enabled or ordered changed, if so emit an extension update
+    // Emit an extension update if enabled or ordered changed
     if new_config.enabled != old_config.enabled || new_config.ordered != old_config.ordered {
         emit_extensions_update(&app)?;
     }
