@@ -21,36 +21,39 @@ export async function handle_promise<T>(
 }
 
 /** Displays a error toast with improved configuration */
-export function error_toast(message: string) {
-	toaster.error({ title: 'Error', description: message });
+export function error_toast(e: { title: string; description: string }) {
+	toaster.error(e);
 }
 
 /** Server Error translations */
-function error_msg(error: api.Error): string {
+function error_msg(error: api.Error): { title: string; description: string } {
 	switch (error.kind) {
 		case 'PoisonedLock':
-			return 'Fatal Backend Error: An internal lock was poisoned.';
+			return { title: 'Fatal Backend Error', description: 'An internal lock was poisoned.' };
 		case 'Checksum':
-			return 'The checksum verification failed.';
+			return { title: 'Verification Error', description: 'The checksum verification failed.' };
 		case 'NoAssets':
-			return `No assets found for this platform.`;
+			return { title: 'Error', description: 'No assets found for this platform.' };
 		case 'FileSystem':
-			return `File System Error: ${error.value}.`;
+			return { title: 'File System Error', description: error.value };
 		case 'LibLoading':
-			return `Library Loading Error ${error.value}.`;
+			return { title: 'Library Loading Error', description: error.value };
 		case 'Conversion':
-			return `Conversion Error: ${error.value}.`;
+			return { title: 'Conversion Error', description: error.value };
 		case 'Json':
-			return `JSON Serialization/Deserialization Error: ${error.value}.`;
+			return { title: 'JSON Serialization/Deserialization Error', description: error.value };
 		case 'Reqwest':
-			return `Network Request Error: ${error.value}.`;
+			return { title: 'Network Request Error', description: error.value };
 		case 'Tauri':
-			return `Tauri Runtime Error: ${error.value}`;
+			return { title: 'Tauri Runtime Error', description: error.value };
 		case 'Shortcut':
-			return `Global Shortcut Error: ${error.value}`;
+			return { title: 'Global Shortcut Error', description: error.value };
 		case 'Autostart':
-			return `Autostart Configuration Error: ${error.value}`;
+			return { title: 'Autostart Configuration Error', description: error.value };
 		default:
-			return 'An unknown Error has occurred. Try reopening the app!';
+			return {
+				title: 'Fatal Frontend Error',
+				description: 'An unknown Error has occurred. Try reopening the app!'
+			};
 	}
 }
