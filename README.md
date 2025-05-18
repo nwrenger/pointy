@@ -28,6 +28,7 @@ pointy is a very useful clipboard extension everybody needs. It's currently bein
 - [ ] Create icon
 - [x] Add updater
   - [ ] Persist permissions on macos after an update
+- [ ] Only Windows: On initial load extensions not loaded
 - [ ] Only Linux: Make it work, then test hidden window
   - need to install `libappindicator` and app indicator support (like on gnome with `gnome-shell-extension-appindicator`)
   - more i don't know
