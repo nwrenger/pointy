@@ -19,7 +19,16 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             autolaunch: false,
-            shortcut: String::from("CommandOrControl+Shift+Space"),
+            shortcut: {
+                #[cfg(target_os = "macos")]
+                {
+                    String::from("Command+Shift+Space")
+                }
+                #[cfg(not(target_os = "macos"))]
+                {
+                    String::from("Control+Shift+Space")
+                }
+            },
             enabled: vec![],
             ordered: vec![],
         }

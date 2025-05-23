@@ -16,7 +16,7 @@ use pointy_api::device_query::{DeviceQuery, DeviceState};
 use tauri::{
     menu::{MenuBuilder, MenuItemBuilder},
     tray::TrayIconBuilder,
-    Emitter, LogicalPosition, LogicalSize, Manager, State,
+    Emitter, LogicalPosition, LogicalSize, Manager, State, WindowEvent,
 };
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 use tracing::info;
@@ -128,6 +128,16 @@ pub fn run() {
             let scale_factor = main_window
                 .current_monitor()?
                 .map_or(1., |f| f.scale_factor());
+
+            // Close settings window on lost focus
+            let settings_window = handle.get_webview_window("settings").unwrap();
+            let settings_window_copy = handle.get_webview_window("settings").unwrap();
+            settings_window.on_window_event(move |event| match event {
+                &WindowEvent::Focused(false) => {
+                    settings_window_copy.hide().unwrap();
+                }
+                _ => {}
+            });
 
             // Global Shortcuts
             handle.plugin(

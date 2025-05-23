@@ -30,14 +30,14 @@
         "url": "settings",
         "label": "settings",
         "decorations": false,
+        "center": true,
         "shadow": false,
+        "resizable": false,
         "transparent": true,
         "visible": false,
         "backgroundThrottling": "disabled",
-        "width": 500,
-        "height": 700,
-        "minWidth": 350,
-        "minHeight": 350
+        "width": 450,
+        "height": 600
       }
     ],
     "macOSPrivateApi": true,
