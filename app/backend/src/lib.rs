@@ -132,11 +132,10 @@ pub fn run() {
             // Close settings window on lost focus
             let settings_window = handle.get_webview_window("settings").unwrap();
             let settings_window_copy = handle.get_webview_window("settings").unwrap();
-            settings_window.on_window_event(move |event| match event {
-                &WindowEvent::Focused(false) => {
+            settings_window.on_window_event(move |event| {
+                if let &WindowEvent::Focused(false) = event {
                     settings_window_copy.hide().unwrap();
                 }
-                _ => {}
             });
 
             // Global Shortcuts

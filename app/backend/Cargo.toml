@@ -17,7 +17,7 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = ["macos-private-api", "tray-icon"] }
 tauri-plugin-autostart = "2"
 tauri-plugin-global-shortcut = "2"
-global-hotkey = "0.6.4"
+global-hotkey = "0.7.0"
 tauri-plugin-updater = "2"
 pointy_api = { path = "../../crates/pointy_api" }
 serde = { version = "1", features = ["derive"] }
