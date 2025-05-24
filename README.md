@@ -21,7 +21,7 @@ pointy is a very useful clipboard extension everybody needs. It's currently bein
       - [x] backend && working functions
     - [ ] Create a template repo containing a publish action which builds for all available plattforms
 - [x] Remove errors on selection wheel
-- [ ] Make tab buttons fill full width
+- [x] Make tab buttons fill full width
 - [ ] Create project website (for downloading, extension docs and developer policies)
 - [x] Add settings with: editing shortcut and autostart option
 - [x] Add AppState for Config an AppData Path

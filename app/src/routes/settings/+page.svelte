@@ -143,6 +143,7 @@
 		contentClasses="h-[calc(100%-56px)] overflow-y-scroll px-3 py-4"
 		classes="h-full overflow-y-hidden"
 		listClasses="pt-[11px] px-3 mb-0!"
+		fluid
 	>
 		{#snippet list()}
 			<Tabs.Control value="general" labelBase="btn hover:filter-none!">General</Tabs.Control>
