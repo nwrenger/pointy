@@ -23,7 +23,7 @@ pointy is a very useful clipboard extension everybody needs. It's currently bein
 - [x] Remove errors on selection wheel
 - [x] Make tab buttons fill full width
 - [ ] Create project website (for downloading, extension docs and developer policies)
-- [x] Add settings with: editsing shortcut and autostart option
+- [x] Add settings with: editing shortcut and autostart option
 - [x] Add AppState for Config an AppData Path
 - [x] Add initial app config by reading config to app setup and State
 - [ ] Create icon
